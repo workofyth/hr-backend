@@ -229,6 +229,20 @@ export class PayrollService {
     return { period, items: itemsWithDetails };
   }
 
+  /**
+   * Riwayat periode payroll satu company (admin-dashboard-web-hr.md §5:
+   * halaman "Payroll" sebelumnya hanya form generate periode baru, tanpa
+   * cara melihat periode yang sudah pernah dibuat).
+   */
+  async findPeriods(
+    companyId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ items: PayrollPeriod[]; total: number; page: number; limit: number }> {
+    const { items, total } = await this.payrollRepository.findPeriods(companyId, page, limit);
+    return { items, total, page, limit };
+  }
+
   // ---------------------------------------------------------------------
   // Pengaturan payroll (salary_components, employee_salary_structures,
   // bpjs_settings, tax_ptkp_settings, tax_ter_rates) — admin-dashboard-web-hr.md

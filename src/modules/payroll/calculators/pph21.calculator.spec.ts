@@ -28,6 +28,7 @@ describe('Pph21Calculator (TER bulanan)', () => {
       findPtkpSetting: jest.fn(),
       findTerRate: jest.fn(),
       findPeriodById: jest.fn(),
+      findPeriods: jest.fn(),
       findPeriod: jest.fn(),
       createPeriod: jest.fn(),
       updatePeriod: jest.fn(),

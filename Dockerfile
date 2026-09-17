@@ -36,7 +36,12 @@ COPY --from=deps-prod /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY public ./public
 COPY docker/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh && chown -R node:node /app
+# Dokumen karyawan (§5.2) disimpan di disk lokal, dimount sebagai volume
+# Docker `employee_documents` (docker-compose.yml) — dibuat & di-chown ke
+# node di sini supaya proses non-root (USER node di bawah) bisa menulis.
+RUN mkdir -p ./uploads/employee-documents \
+  && chmod +x ./entrypoint.sh \
+  && chown -R node:node /app
 
 USER node
 

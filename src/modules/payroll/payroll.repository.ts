@@ -138,6 +138,20 @@ export class PayrollRepository implements IPayrollRepository {
     return this.periodRepository.findOne({ where: { companyId, periodMonth, periodYear } });
   }
 
+  async findPeriods(
+    companyId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ items: PayrollPeriod[]; total: number }> {
+    const [items, total] = await this.periodRepository.findAndCount({
+      where: { companyId },
+      order: { periodYear: 'DESC', periodMonth: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { items, total };
+  }
+
   createPeriod(data: DeepPartial<PayrollPeriod>, manager?: EntityManager): Promise<PayrollPeriod> {
     const repository = manager ? manager.getRepository(PayrollPeriod) : this.periodRepository;
     const period = repository.create(data);

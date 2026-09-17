@@ -1,7 +1,10 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
-import { EMPLOYEE_REPOSITORY } from './employee.constants';
+import { unlink } from 'fs';
+import { join } from 'path';
+import { EMPLOYEE_REPOSITORY, EMPLOYEE_DOCUMENT_REPOSITORY, EMPLOYEE_DOCUMENTS_UPLOAD_DIR } from './employee.constants';
 import { IEmployeeRepository } from './employee-repository.interface';
+import { IEmployeeDocumentRepository } from './employee-document-repository.interface';
 import { USER_REPOSITORY } from '../auth/auth.constants';
 import { IUserRepository } from '../auth/user-repository.interface';
 import { TRANSACTION_RUNNER, TransactionRunner } from '../../database/transaction-runner';
@@ -10,6 +13,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { Employee, EmployeeStatus } from './entities/employee.entity';
+import { EmployeeDocument } from './entities/employee-document.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
@@ -29,8 +33,11 @@ export interface FindAllResult {
  */
 @Injectable()
 export class EmployeeService {
+  private readonly logger = new Logger(EmployeeService.name);
+
   constructor(
     @Inject(EMPLOYEE_REPOSITORY) private readonly employeeRepository: IEmployeeRepository,
+    @Inject(EMPLOYEE_DOCUMENT_REPOSITORY) private readonly employeeDocumentRepository: IEmployeeDocumentRepository,
     @Inject(USER_REPOSITORY) private readonly userRepository: IUserRepository,
     @Inject(TRANSACTION_RUNNER) private readonly transactionRunner: TransactionRunner,
   ) {}
@@ -121,5 +128,47 @@ export class EmployeeService {
   async updateMe(userId: string, dto: UpdateMyProfileDto): Promise<Employee> {
     const employee = await this.findMe(userId);
     return this.employeeRepository.update(employee.id, dto);
+  }
+
+  async findDocuments(employeeId: string): Promise<EmployeeDocument[]> {
+    await this.findOne(employeeId);
+    return this.employeeDocumentRepository.findByEmployeeId(employeeId);
+  }
+
+  async addDocument(employeeId: string, type: string, storedFilename: string): Promise<EmployeeDocument> {
+    await this.findOne(employeeId);
+    return this.employeeDocumentRepository.create({
+      employeeId,
+      type,
+      fileUrl: storedFilename,
+      uploadedAt: new Date(),
+    });
+  }
+
+  async getDocumentForDownload(employeeId: string, documentId: string): Promise<EmployeeDocument> {
+    const document = await this.getOwnDocumentOrThrow(employeeId, documentId);
+    return document;
+  }
+
+  async removeDocument(employeeId: string, documentId: string): Promise<void> {
+    const document = await this.getOwnDocumentOrThrow(employeeId, documentId);
+    await this.employeeDocumentRepository.softDelete(documentId);
+
+    // Best-effort: hapus file fisik di disk. Gagal hapus file TIDAK
+    // membatalkan soft-delete baris DB — dokumen sudah dianggap terhapus
+    // dari sudut pandang aplikasi meskipun file "yatim" tersisa di disk.
+    unlink(join(EMPLOYEE_DOCUMENTS_UPLOAD_DIR, document.fileUrl), (error) => {
+      if (error) {
+        this.logger.warn(`Gagal menghapus file dokumen ${document.fileUrl}: ${error.message}`);
+      }
+    });
+  }
+
+  private async getOwnDocumentOrThrow(employeeId: string, documentId: string): Promise<EmployeeDocument> {
+    const document = await this.employeeDocumentRepository.findById(documentId);
+    if (!document || document.employeeId !== employeeId) {
+      throw new NotFoundException('Dokumen tidak ditemukan');
+    }
+    return document;
   }
 }

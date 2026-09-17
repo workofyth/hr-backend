@@ -21,3 +21,7 @@ npm-debug.log*
 
 # test coverage
 coverage/
+
+# dokumen karyawan yang diupload lokal (dev) — di production disimpan di
+# volume Docker `employee_documents`, tidak pernah masuk git
+/uploads/

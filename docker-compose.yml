@@ -33,6 +33,11 @@ services:
       # dalam network compose, apa pun isi DB_HOST/DB_PORT di .env lokal.
       DB_HOST: postgres
       DB_PORT: 5432
+    volumes:
+      # Dokumen karyawan (KTP/kontrak/ijazah, roadmap Phase 1) disimpan di
+      # disk lokal (belum ada kredensial S3/MinIO) — volume ini supaya file
+      # tidak hilang setiap `docker compose up --build`.
+      - employee_documents:/app/uploads/employee-documents
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,3 +60,4 @@ services:
 
 volumes:
   postgres_data:
+  employee_documents:

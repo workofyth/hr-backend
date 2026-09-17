@@ -7,10 +7,10 @@ perhitungan THR.
 ## Dependency
 
 - **Impor**: `EmployeeModule` (daftar employee aktif + data PTKP),
-  `AttendanceModule` (jam lembur), `LeaveModule` (hari unpaid leave) — baca
-  lintas modul lewat repository interface masing-masing (Dependency
-  Inversion), TIDAK mengakses tabel `attendances`/`leave_requests`
-  langsung.
+  `AttendanceModule` (jam lembur dari `overtime_requests` APPROVED),
+  `LeaveModule` (hari unpaid leave) — baca lintas modul lewat repository
+  interface masing-masing (Dependency Inversion), TIDAK mengakses tabel
+  `overtime_requests`/`leave_requests` langsung.
 - **Diekspor**: `PAYROLL_REPOSITORY` (`IPayrollRepository`) — dipakai
   `ReportsModule` (rekap payroll).
 - **Event yang dipancarkan**: `payroll.generated` — belum ada listener
@@ -46,9 +46,9 @@ perhitungan THR.
 
 ## Catatan / keterbatasan yang diketahui (lihat juga komentar di kode)
 
-- Jam lembur diturunkan dari `attendances.work_duration_minutes` vs jadwal
-  shift, BUKAN dari `overtime_requests` (tabel itu belum pernah dibuat —
-  lihat README Attendance).
+- Jam lembur dihitung dari `overtime_requests` berstatus APPROVED dalam
+  rentang tanggal periode (`PayrollService.computeOvertimeHours`) — bukan
+  lagi diturunkan dari selisih `work_duration_minutes` vs jadwal shift.
 - Hari kerja per bulan diasumsikan 6 hari/minggu (Senin–Sabtu); hari libur
   nasional (`holidays`) belum dikecualikan dari pembagi ini.
 - Rekonsiliasi tahunan PPh21 (Desember, metode progresif) belum

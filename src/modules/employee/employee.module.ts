@@ -6,8 +6,9 @@ import { EmployeeDocument } from './entities/employee-document.entity';
 import { EmployeeShiftAssignment } from './entities/employee-shift-assignment.entity';
 import { EmployeeController } from './employee.controller';
 import { EmployeeService } from './employee.service';
-import { EMPLOYEE_REPOSITORY } from './employee.constants';
+import { EMPLOYEE_REPOSITORY, EMPLOYEE_DOCUMENT_REPOSITORY } from './employee.constants';
 import { EmployeeRepository } from './employee.repository';
+import { EmployeeDocumentRepository } from './employee-document.repository';
 import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/transaction-runner';
 
 @Module({
@@ -21,6 +22,7 @@ import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/tra
   providers: [
     EmployeeService,
     { provide: EMPLOYEE_REPOSITORY, useClass: EmployeeRepository },
+    { provide: EMPLOYEE_DOCUMENT_REPOSITORY, useClass: EmployeeDocumentRepository },
     { provide: TRANSACTION_RUNNER, useClass: TypeOrmTransactionRunner },
   ],
   // EMPLOYEE_REPOSITORY diekspor supaya modul lain (mis. attendance) bisa

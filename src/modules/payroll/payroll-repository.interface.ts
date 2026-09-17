@@ -56,6 +56,12 @@ export interface IPayrollRepository {
 
   findPeriodById(id: string): Promise<PayrollPeriod | null>;
   findPeriod(companyId: string, periodMonth: number, periodYear: number): Promise<PayrollPeriod | null>;
+  /**
+   * Riwayat periode payroll satu company, terbaru dulu — dipakai dashboard
+   * (admin-dashboard-web-hr.md) untuk halaman "Payroll" alih-alih hanya
+   * form generate periode baru.
+   */
+  findPeriods(companyId: string, page: number, limit: number): Promise<{ items: PayrollPeriod[]; total: number }>;
   createPeriod(data: DeepPartial<PayrollPeriod>, manager?: EntityManager): Promise<PayrollPeriod>;
   updatePeriod(id: string, data: DeepPartial<PayrollPeriod>, manager?: EntityManager): Promise<PayrollPeriod>;
 

@@ -16,6 +16,7 @@ import { FindSalaryStructuresQueryDto } from './dto/find-salary-structures-query
 import { CreateBpjsSettingDto } from './dto/create-bpjs-setting.dto';
 import { CreatePtkpSettingDto } from './dto/create-ptkp-setting.dto';
 import { CreateTerRateDto } from './dto/create-ter-rate.dto';
+import { FindPeriodsQueryDto } from './dto/find-periods-query.dto';
 
 /**
  * Hanya menerima request, validasi lewat DTO, dan memanggil PayrollService
@@ -36,6 +37,17 @@ export class PayrollController {
   @Post('generate')
   generate(@Body() dto: GeneratePayrollDto) {
     return this.payrollService.generate(dto);
+  }
+
+  @Get('periods')
+  async findPeriods(@Query() query: FindPeriodsQueryDto) {
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const limit = query.limit && query.limit > 0 ? query.limit : 20;
+    const result = await this.payrollService.findPeriods(query.companyId, page, limit);
+    return {
+      data: result.items,
+      meta: { page: result.page, totalPages: Math.max(1, Math.ceil(result.total / result.limit)) },
+    };
   }
 
   @Get(':id/detail')

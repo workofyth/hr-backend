@@ -1,10 +1,22 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
+
+// removeDocument() menghapus file fisik best-effort lewat fs.unlink — di-mock
+// modul penuh (bukan jest.spyOn) supaya test tidak menyentuh disk sungguhan;
+// beberapa versi Node menandai property built-in module sebagai non-configurable.
+jest.mock('fs', () => ({
+  ...jest.requireActual('fs'),
+  unlink: jest.fn((_path: unknown, callback: (error: Error | null) => void) => callback(null)),
+}));
+
+import * as fs from 'fs';
 import { EmployeeService } from './employee.service';
 import { IEmployeeRepository } from './employee-repository.interface';
+import { IEmployeeDocumentRepository } from './employee-document-repository.interface';
 import { IUserRepository } from '../auth/user-repository.interface';
 import { TransactionRunner } from '../../database/transaction-runner';
 import { Employee, EmployeeStatus, EmploymentType, MaritalStatus } from './entities/employee.entity';
+import { EmployeeDocument } from './entities/employee-document.entity';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import * as passwordUtil from '../../common/utils/password.util';
@@ -12,6 +24,7 @@ import * as passwordUtil from '../../common/utils/password.util';
 describe('EmployeeService', () => {
   let service: EmployeeService;
   let employeeRepository: jest.Mocked<IEmployeeRepository>;
+  let employeeDocumentRepository: jest.Mocked<IEmployeeDocumentRepository>;
   let userRepository: jest.Mocked<IUserRepository>;
   let transactionRunner: TransactionRunner;
   let runMock: jest.Mock;
@@ -50,6 +63,13 @@ describe('EmployeeService', () => {
       softDelete: jest.fn(),
     };
 
+    employeeDocumentRepository = {
+      findById: jest.fn(),
+      findByEmployeeId: jest.fn(),
+      create: jest.fn(),
+      softDelete: jest.fn(),
+    };
+
     userRepository = {
       findById: jest.fn(),
       findByEmailOrPhone: jest.fn(),
@@ -63,8 +83,9 @@ describe('EmployeeService', () => {
     transactionRunner = { run: runMock } as unknown as TransactionRunner;
 
     jest.spyOn(passwordUtil, 'hashPassword').mockResolvedValue('hashed-password');
+    (fs.unlink as unknown as jest.Mock).mockClear();
 
-    service = new EmployeeService(employeeRepository, userRepository, transactionRunner);
+    service = new EmployeeService(employeeRepository, employeeDocumentRepository, userRepository, transactionRunner);
   });
 
   afterEach(() => {
@@ -205,6 +226,68 @@ describe('EmployeeService', () => {
 
       await expect(service.updateMe('user-1', { bankName: 'Mandiri' })).rejects.toBeInstanceOf(NotFoundException);
       expect(employeeRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findDocuments', () => {
+    it('mengambil dokumen milik employee setelah memastikan employee ada', async () => {
+      employeeRepository.findById.mockResolvedValue(fakeEmployee);
+      const documents = [{ id: 'document-1' } as EmployeeDocument];
+      employeeDocumentRepository.findByEmployeeId.mockResolvedValue(documents);
+
+      const result = await service.findDocuments('employee-1');
+
+      expect(employeeDocumentRepository.findByEmployeeId).toHaveBeenCalledWith('employee-1');
+      expect(result).toEqual(documents);
+    });
+
+    it('melempar NotFoundException jika employee tidak ada', async () => {
+      employeeRepository.findById.mockResolvedValue(null);
+
+      await expect(service.findDocuments('unknown-id')).rejects.toBeInstanceOf(NotFoundException);
+      expect(employeeDocumentRepository.findByEmployeeId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addDocument', () => {
+    it('menyimpan baris employee_documents dengan nama file yang sudah disimpan multer', async () => {
+      employeeRepository.findById.mockResolvedValue(fakeEmployee);
+      employeeDocumentRepository.create.mockResolvedValue({ id: 'document-1' } as EmployeeDocument);
+
+      await service.addDocument('employee-1', 'KTP', 'random-uuid.pdf');
+
+      expect(employeeDocumentRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeId: 'employee-1', type: 'KTP', fileUrl: 'random-uuid.pdf' }),
+      );
+    });
+  });
+
+  describe('removeDocument', () => {
+    const fakeDocument = { id: 'document-1', employeeId: 'employee-1', fileUrl: 'random-uuid.pdf' } as EmployeeDocument;
+
+    it('soft-delete baris DB setelah memastikan dokumen milik employee yang benar', async () => {
+      employeeDocumentRepository.findById.mockResolvedValue(fakeDocument);
+
+      await service.removeDocument('employee-1', 'document-1');
+
+      expect(employeeDocumentRepository.softDelete).toHaveBeenCalledWith('document-1');
+    });
+
+    it('melempar NotFoundException jika dokumen milik employee lain (mencegah akses lintas karyawan)', async () => {
+      employeeDocumentRepository.findById.mockResolvedValue({
+        ...fakeDocument,
+        employeeId: 'other-employee',
+      } as EmployeeDocument);
+
+      await expect(service.removeDocument('employee-1', 'document-1')).rejects.toBeInstanceOf(NotFoundException);
+      expect(employeeDocumentRepository.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('melempar NotFoundException jika dokumen tidak ditemukan', async () => {
+      employeeDocumentRepository.findById.mockResolvedValue(null);
+
+      await expect(service.removeDocument('employee-1', 'unknown-id')).rejects.toBeInstanceOf(NotFoundException);
+      expect(employeeDocumentRepository.softDelete).not.toHaveBeenCalled();
     });
   });
 });

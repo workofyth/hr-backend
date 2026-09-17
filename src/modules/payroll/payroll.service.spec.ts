@@ -90,6 +90,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       findPtkpSetting: jest.fn().mockResolvedValue({ status: 'TK0' } as TaxPtkpSetting),
       findTerRate: jest.fn().mockResolvedValue({ category: 'A', rate: '0.0200' } as TaxTerRate),
       findPeriodById: jest.fn(),
+      findPeriods: jest.fn(),
       findPeriod: jest.fn().mockResolvedValue(null),
       createPeriod: jest.fn().mockImplementation((data) =>
         Promise.resolve({ id: 'period-1', status: PayrollPeriodStatus.DRAFT, ...data } as PayrollPeriod),
@@ -407,6 +408,20 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(payrollRepository.createSalaryStructure).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findPeriods', () => {
+    it('meneruskan page/limit ke repository & mengembalikan total untuk pagination', async () => {
+      payrollRepository.findPeriods.mockResolvedValue({
+        items: [{ id: 'period-1' } as PayrollPeriod],
+        total: 1,
+      });
+
+      const result = await service.findPeriods('company-1', 2, 10);
+
+      expect(payrollRepository.findPeriods).toHaveBeenCalledWith('company-1', 2, 10);
+      expect(result).toEqual({ items: [{ id: 'period-1' }], total: 1, page: 2, limit: 10 });
     });
   });
 

@@ -15,6 +15,7 @@ import { LeaveModule } from './modules/leave/leave.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -53,6 +54,7 @@ import { HealthController } from './modules/health/health.controller';
     PayrollModule,
     ReportsModule,
     NotificationModule,
+    AuditModule,
   ],
   controllers: [HealthController],
   providers: [
