@@ -50,6 +50,14 @@ src/
 │   │   ├── entities/
 │   │   └── dto/
 │   │
+│   ├── organization/            # read-only: companies/branches/departments/
+│   │   ├── organization.controller.ts   # positions — data referensi §5.1,
+│   │   └── organization.service.ts      # dipakai dropdown Admin Dashboard.
+│   │                                     # Tidak ada create/update/delete di
+│   │                                     # sini — perubahan data organisasi
+│   │                                     # masih lewat migration/SQL manual
+│   │                                     # sampai ada kebutuhan CRUD penuh.
+│   │
 │   ├── attendance/
 │   │   ├── attendance.controller.ts
 │   │   ├── attendance.service.ts
@@ -85,7 +93,25 @@ src/
 │   └── entities/                 # jika pakai ORM terpisah dari modul
 │
 └── main.ts
+
+public/
+└── admin/                        # Admin Dashboard statis (HTML/CSS/JS vanilla,
+                                   # tanpa build tooling). Murni consumer REST
+                                   # API yang sama dengan mobile app — TIDAK
+                                   # ada logika bisnis/akses DB di sini. Di-serve
+                                   # oleh backend di path /admin lewat
+                                   # @nestjs/serve-static, terpisah dari prefix
+                                   # /api/v1. Bukan pengganti aplikasi mobile
+                                   # (frontend-mobile-architecture-hr.md) —
+                                   # cuma alat bantu HR Admin/Super Admin untuk
+                                   # kelola data dasar dari browser.
 ```
+
+**Dokumentasi API interaktif (Swagger/OpenAPI):** di-generate otomatis dari
+DTO + decorator controller (`@nestjs/swagger`, plugin CLI diaktifkan lewat
+`nest-cli.json` supaya minim boilerplate), tersedia di `/api/docs` saat
+aplikasi jalan. Bukan tabel/skema baru — murni lapisan dokumentasi di atas
+kode yang sudah ada.
 
 ---
 

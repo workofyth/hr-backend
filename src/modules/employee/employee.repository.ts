@@ -16,12 +16,19 @@ import {
 export class EmployeeRepository implements IEmployeeRepository {
   constructor(@InjectRepository(Employee) private readonly repository: Repository<Employee>) {}
 
+  // Relasi yang ikut di-load untuk tampilan (mis. Admin Dashboard butuh nama
+  // cabang/departemen/jabatan, bukan UUID mentah). SENGAJA tidak memuat
+  // relasi `user` — entity User punya kolom passwordHash, dan memuatnya di
+  // sini akan membocorkan hash password lewat response API.
+  private static readonly DISPLAY_RELATIONS = ['company', 'branch', 'department', 'position'];
+
   private getRepository(manager?: EntityManager): Repository<Employee> {
     return manager ? manager.getRepository(Employee) : this.repository;
   }
 
   async findAll({ page, limit }: PaginationParams): Promise<PaginatedResult<Employee>> {
     const [items, total] = await this.repository.findAndCount({
+      relations: EmployeeRepository.DISPLAY_RELATIONS,
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -30,7 +37,7 @@ export class EmployeeRepository implements IEmployeeRepository {
   }
 
   findById(id: string): Promise<Employee | null> {
-    return this.repository.findOne({ where: { id } });
+    return this.repository.findOne({ where: { id }, relations: EmployeeRepository.DISPLAY_RELATIONS });
   }
 
   findByEmployeeCode(employeeCode: string): Promise<Employee | null> {

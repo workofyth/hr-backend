@@ -1,0 +1,21 @@
+node_modules
+dist
+coverage
+npm-debug.log*
+
+# Jangan pernah ikut ter-bake ke image — env disuntikkan saat runtime
+# lewat env_file/environment di docker-compose.yml.
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.DS_Store
+*.md
+
+# Dokumen acuan proyek, tidak dibutuhkan di dalam image
+backend-architecture-hr.md
+execution-guide-hr.md
+frontend-mobile-architecture-hr.md
+roadmap-aplikasi-hr.md

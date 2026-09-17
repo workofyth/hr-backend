@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -7,6 +8,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
  * Hanya menerima request & memanggil AuthService — tidak ada logika bisnis
  * di sini (checklist §7 backend-architecture-hr.md).
  */
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
