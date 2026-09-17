@@ -12,6 +12,7 @@ import { EmployeeModule } from './modules/employee/employee.module';
 import { OrganizationModule } from './modules/organization/organization.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { LeaveModule } from './modules/leave/leave.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { HealthController } from './modules/health/health.controller';
 
@@ -42,9 +43,8 @@ import { HealthController } from './modules/health/health.controller';
     OrganizationModule,
     AttendanceModule,
     LeaveModule,
+    PayrollModule,
     NotificationModule,
-    // Modul fitur lain (payroll) akan didaftarkan di sini per fase sesuai
-    // roadmap-aplikasi-hr.md.
   ],
   controllers: [HealthController],
 })

@@ -27,5 +27,9 @@ import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/tra
     { provide: ATTENDANCE_CORRECTION_REPOSITORY, useClass: AttendanceCorrectionRepository },
     { provide: TRANSACTION_RUNNER, useClass: TypeOrmTransactionRunner },
   ],
+  // ATTENDANCE_REPOSITORY diekspor supaya modul lain (mis. payroll — jam
+  // lembur & potongan alpha, roadmap Phase 4) bisa membaca attendances
+  // tanpa mengakses tabelnya langsung (Repository Pattern, §3).
+  exports: [ATTENDANCE_REPOSITORY],
 })
 export class AttendanceModule {}

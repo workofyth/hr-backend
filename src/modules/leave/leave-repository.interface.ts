@@ -32,6 +32,14 @@ export interface ILeaveRepository {
 
   findRequestById(id: string): Promise<LeaveRequest | null>;
   findRequestsByEmployee(employeeId: string, params: PaginationParams): Promise<PaginatedResult<LeaveRequest>>;
+  /**
+   * Pengajuan cuti APPROVED milik seorang karyawan yang rentang tanggalnya
+   * beririsan dengan [startDate, endDate] — dipakai PayrollService untuk
+   * "Potongan ... unpaid leave" (roadmap Phase 4) tanpa modul payroll perlu
+   * tahu detail tabel `leave_requests`. `leaveType` di-eager-load supaya
+   * caller bisa cek `isPaid` tanpa query tambahan.
+   */
+  findApprovedRequestsOverlapping(employeeId: string, startDate: string, endDate: string): Promise<LeaveRequest[]>;
   createRequest(data: DeepPartial<LeaveRequest>, manager?: EntityManager): Promise<LeaveRequest>;
   updateRequest(id: string, data: DeepPartial<LeaveRequest>, manager?: EntityManager): Promise<LeaveRequest>;
 

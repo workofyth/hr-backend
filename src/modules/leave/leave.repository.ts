@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, EntityManager, Repository } from 'typeorm';
 import { LeaveType } from './entities/leave-type.entity';
 import { LeaveBalance } from './entities/leave-balance.entity';
-import { LeaveRequest } from './entities/leave-request.entity';
+import { LeaveRequest, LeaveRequestStatus } from './entities/leave-request.entity';
 import { LeaveApproval } from './entities/leave-approval.entity';
 import {
   ILeaveRepository,
@@ -74,6 +74,21 @@ export class LeaveRepository implements ILeaveRepository {
       take: limit,
     });
     return { items, total };
+  }
+
+  findApprovedRequestsOverlapping(
+    employeeId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<LeaveRequest[]> {
+    return this.leaveRequestRepository
+      .createQueryBuilder('request')
+      .leftJoinAndSelect('request.leaveType', 'leaveType')
+      .where('request.employee_id = :employeeId', { employeeId })
+      .andWhere('request.status = :status', { status: LeaveRequestStatus.APPROVED })
+      .andWhere('request.start_date <= :endDate', { endDate })
+      .andWhere('request.end_date >= :startDate', { startDate })
+      .getMany();
   }
 
   createRequest(data: DeepPartial<LeaveRequest>, manager?: EntityManager): Promise<LeaveRequest> {

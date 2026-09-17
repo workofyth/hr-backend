@@ -29,6 +29,12 @@ export interface IEmployeeRepository {
    * query langsung ke tabel `users`.
    */
   findFirstByCompanyAndRole(companyId: string, role: UserRole): Promise<Employee | null>;
+  /**
+   * Semua karyawan ACTIVE pada sebuah company, tanpa paginasi — dipakai
+   * PayrollService.generate() (§6: "Ambil semua employee aktif") untuk
+   * menghitung payroll_items satu company sekaligus dalam satu transaction.
+   */
+  findActiveByCompany(companyId: string): Promise<Employee[]>;
   create(data: DeepPartial<Employee>, manager?: EntityManager): Promise<Employee>;
   update(id: string, data: DeepPartial<Employee>): Promise<Employee>;
   softDelete(id: string): Promise<void>;

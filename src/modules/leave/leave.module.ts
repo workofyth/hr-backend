@@ -27,5 +27,9 @@ import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/tra
     { provide: LEAVE_REPOSITORY, useClass: LeaveRepository },
     { provide: TRANSACTION_RUNNER, useClass: TypeOrmTransactionRunner },
   ],
+  // LEAVE_REPOSITORY diekspor supaya modul lain (mis. payroll — potongan
+  // unpaid leave, roadmap Phase 4) bisa membaca leave_requests tanpa
+  // mengakses tabelnya langsung (Repository Pattern, §3).
+  exports: [LEAVE_REPOSITORY],
 })
 export class LeaveModule {}

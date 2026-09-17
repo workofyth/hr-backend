@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, EntityManager, Repository } from 'typeorm';
-import { Employee } from './entities/employee.entity';
+import { Employee, EmployeeStatus } from './entities/employee.entity';
 import {
   IEmployeeRepository,
   PaginatedResult,
@@ -57,6 +57,13 @@ export class EmployeeRepository implements IEmployeeRepository {
       .andWhere('user.role = :role', { role })
       .orderBy('employee.created_at', 'ASC')
       .getOne();
+  }
+
+  findActiveByCompany(companyId: string): Promise<Employee[]> {
+    return this.repository.find({
+      where: { companyId, status: EmployeeStatus.ACTIVE },
+      relations: EmployeeRepository.DISPLAY_RELATIONS,
+    });
   }
 
   create(data: DeepPartial<Employee>, manager?: EntityManager): Promise<Employee> {
