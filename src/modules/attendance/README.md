@@ -26,7 +26,10 @@ absensi dengan approval atasan.
 - Strategy Pattern: `GeofenceValidationStrategy` (rumus Haversine, validasi
   radius yang TIDAK PERNAH percaya perhitungan dari client).
 - Unit of Work: transaction untuk `approveCorrection()` (menulis
-  `attendances` + `attendance_corrections` sekaligus).
+  `attendances` + `attendance_corrections` sekaligus) dan `rejectCorrection()`
+  (`attendance_corrections` + `audit_logs`).
+- Audit log: `APPROVE_ATTENDANCE_CORRECTION`/`REJECT_ATTENDANCE_CORRECTION`
+  (checklist §7), ditulis DALAM transaction yang sama lewat `AuditLogService`.
 
 ## Endpoint
 
@@ -46,6 +49,3 @@ absensi dengan approval atasan.
 - Status `ABSENT` tidak pernah di-set otomatis oleh job terjadwal (tidak
   ada cron "tandai alpha jika tidak check-in") — hanya field enum yang
   tersedia di skema.
-- Belum ada audit log untuk `approveCorrection()`/`rejectCorrection()`
-  (berbeda dari Leave/Payroll approval yang sudah tercatat) — temuan
-  terbuka dari review checklist §7, belum diperbaiki.

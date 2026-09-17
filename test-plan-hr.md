@@ -170,8 +170,8 @@ karyawan asli dipakai.
 |---|---|---|
 | Enkripsi data sensitif at-rest (NIK, NPWP, no. rekening) | ✅ Ada — `encryptedColumn` transformer (AES-256-GCM) di `Employee` entity | Test: query langsung ke Postgres (bypass ORM) untuk kolom `nik`/`npwp`/`bank_account_no` → harus berupa ciphertext, bukan plaintext |
 | HTTPS | ⚠️ Tanggung jawab layer deployment (reverse proxy/load balancer), bukan kode aplikasi | Checklist deployment: pastikan TLS terpasang di depan NestJS sebelum rilis pilot; app sendiri tidak melakukan TLS termination |
-| Rate limiting | ❌ **Belum diimplementasikan** — tidak ada `@nestjs/throttler` atau middleware sejenis di `main.ts`/`app.module.ts` | **Gap nyata** — perlu ditambahkan sebelum rilis produksi, terutama endpoint `POST /auth/login` (brute-force) dan `POST /attendance/check-in` |
-| Audit log | ⚠️ Sebagian — `APPROVE_PAYROLL`, `APPROVE/REJECT/CANCEL_LEAVE_REQUEST` sudah tercatat (baru ditambahkan). Perubahan data karyawan (`EmployeeService.update`) & pembuatan `employee_salary_structures` (belum ada endpoint-nya) BELUM tercatat | Tambahkan audit log saat fitur CRUD salary structure dibangun |
+| Rate limiting | ✅ `@nestjs/throttler` global (`APP_GUARD`) + batas lebih ketat di `POST /auth/login` (5/menit) dan `POST /attendance/check-in`/`check-out` (10/menit) | Test: kirim request melebihi limit → 429, `HealthController` (`@SkipThrottle()`) tetap bisa dipoll tanpa batas |
+| Audit log | ✅ `APPROVE_PAYROLL`, `APPROVE/REJECT/CANCEL_LEAVE_REQUEST`, `APPROVE/REJECT_ATTENDANCE_CORRECTION` tercatat. Perubahan data karyawan (`EmployeeService.update`) & pembuatan `employee_salary_structures` (belum ada endpoint-nya) BELUM tercatat | Tambahkan audit log saat fitur CRUD salary structure dibangun |
 
 ---
 
@@ -240,7 +240,7 @@ diuji sukses minimal sekali di environment yang sama dengan pilot.
       skenario §3 lulus
 - [ ] Matriks verifikasi manual payroll (§4) disetujui tertulis oleh
       HR/Finance
-- [ ] Rate limiting ditambahkan (gap §5) sebelum endpoint publik dibuka
+- [ ] Rate limiting sudah di kode (§5) — perlu diverifikasi lewat E2E test (skenario 429) sebelum endpoint publik dibuka
 - [ ] Backup terjadwal aktif + minimal 1x uji restore sukses (§6)
 - [ ] UAT (§7) sign-off tertulis
 - [ ] Dokumentasi user & training admin HR (§9) selesai

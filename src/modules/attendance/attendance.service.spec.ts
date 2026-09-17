@@ -13,6 +13,7 @@ import { Employee } from '../employee/entities/employee.entity';
 import { EmployeeShiftAssignment } from '../employee/entities/employee-shift-assignment.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { ATTENDANCE_CHECKED_IN_EVENT } from './attendance.constants';
+import { AuditLogService } from '../../common/services/audit-log.service';
 
 describe('AttendanceService', () => {
   let service: AttendanceService;
@@ -21,6 +22,7 @@ describe('AttendanceService', () => {
   let employeeRepository: jest.Mocked<IEmployeeRepository>;
   let transactionRunner: TransactionRunner;
   let eventEmitter: jest.Mocked<EventEmitter2>;
+  let auditLogService: jest.Mocked<AuditLogService>;
 
   // Kantor: titik acuan geofence. Tepat di titik ini => jarak 0m (dalam radius).
   const branch = { id: 'branch-1', latitude: '-6.1750000', longitude: '106.8270000', radiusMeters: 100 };
@@ -75,6 +77,7 @@ describe('AttendanceService', () => {
     transactionRunner = { run: runMock } as unknown as TransactionRunner;
 
     eventEmitter = { emit: jest.fn() } as unknown as jest.Mocked<EventEmitter2>;
+    auditLogService = { record: jest.fn() } as unknown as jest.Mocked<AuditLogService>;
 
     const configService = {
       get: jest.fn((key: string) =>
@@ -89,6 +92,7 @@ describe('AttendanceService', () => {
       transactionRunner,
       new GeofenceValidationStrategy(),
       eventEmitter,
+      auditLogService,
       configService,
     );
 
@@ -318,6 +322,14 @@ describe('AttendanceService', () => {
         expect.objectContaining({ status: AttendanceCorrectionStatus.APPROVED, approvedBy: managerEmployee.id }),
         undefined,
       );
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'APPROVE_ATTENDANCE_CORRECTION',
+          entityType: 'attendance_correction',
+          entityId: 'correction-1',
+        }),
+        undefined,
+      );
       expect(result.status).toBe(AttendanceCorrectionStatus.APPROVED);
     });
 
@@ -330,6 +342,7 @@ describe('AttendanceService', () => {
         ForbiddenException,
       );
       expect(attendanceRepository.create).not.toHaveBeenCalled();
+      expect(auditLogService.record).not.toHaveBeenCalled();
     });
 
     it('menolak dengan ConflictException jika koreksi sudah diproses sebelumnya', async () => {
@@ -341,6 +354,58 @@ describe('AttendanceService', () => {
       await expect(service.approveCorrection(managerActingUser, 'correction-1')).rejects.toBeInstanceOf(
         ConflictException,
       );
+    });
+  });
+
+  describe('rejectCorrection', () => {
+    const pendingCorrection = {
+      id: 'correction-1',
+      attendanceId: null,
+      employeeId: employee.id,
+      requestedDate: '2026-01-15',
+      status: AttendanceCorrectionStatus.PENDING,
+    } as unknown as AttendanceCorrection;
+
+    const managerActingUser = { userId: 'manager-user-1', role: UserRole.MANAGER };
+    const managerEmployee = { id: 'manager-employee-1' } as Employee;
+
+    it('mengizinkan atasan langsung menolak & mencatat audit log DALAM SATU transaction (checklist §7)', async () => {
+      correctionRepository.findById.mockResolvedValue(pendingCorrection);
+      employeeRepository.findById.mockResolvedValue(employee);
+      employeeRepository.findByUserId.mockResolvedValue(managerEmployee);
+      correctionRepository.update.mockResolvedValue({
+        ...pendingCorrection,
+        status: AttendanceCorrectionStatus.REJECTED,
+      } as AttendanceCorrection);
+
+      const result = await service.rejectCorrection(managerActingUser, 'correction-1');
+
+      expect(correctionRepository.update).toHaveBeenCalledWith(
+        'correction-1',
+        expect.objectContaining({ status: AttendanceCorrectionStatus.REJECTED, approvedBy: managerEmployee.id }),
+        undefined, // dari mock TransactionRunner (lihat runMock di beforeEach)
+      );
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'REJECT_ATTENDANCE_CORRECTION',
+          entityType: 'attendance_correction',
+          entityId: 'correction-1',
+        }),
+        undefined,
+      );
+      expect(result.status).toBe(AttendanceCorrectionStatus.REJECTED);
+    });
+
+    it('menolak dengan ForbiddenException jika bukan atasan langsung & bukan HR/Super Admin', async () => {
+      correctionRepository.findById.mockResolvedValue(pendingCorrection);
+      employeeRepository.findById.mockResolvedValue(employee);
+      employeeRepository.findByUserId.mockResolvedValue({ id: 'other-manager' } as Employee);
+
+      await expect(service.rejectCorrection(managerActingUser, 'correction-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(correctionRepository.update).not.toHaveBeenCalled();
+      expect(auditLogService.record).not.toHaveBeenCalled();
     });
   });
 });

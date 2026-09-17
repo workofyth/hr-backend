@@ -32,6 +32,7 @@ import { combineDateAndTimeUtc, formatDateOnly } from '../../common/utils/date.u
 import { LEAVE_APPROVED_EVENT, LEAVE_CANCELLED_EVENT } from '../leave/leave.constants';
 import { LeaveApprovedEvent } from '../leave/events/leave-approved.event';
 import { LeaveCancelledEvent } from '../leave/events/leave-cancelled.event';
+import { AuditLogService } from '../../common/services/audit-log.service';
 
 /**
  * Logika bisnis modul Attendance — roadmap-aplikasi-hr.md Phase 2, alur
@@ -57,6 +58,7 @@ export class AttendanceService {
     @Inject(TRANSACTION_RUNNER) private readonly transactionRunner: TransactionRunner,
     private readonly geofenceStrategy: GeofenceValidationStrategy,
     private readonly eventEmitter: EventEmitter2,
+    private readonly auditLogService: AuditLogService,
     configService: ConfigService,
   ) {
     this.maxGpsAccuracyMeters = configService.get<number>('attendance.maxGpsAccuracyMeters') as number;
@@ -225,7 +227,7 @@ export class AttendanceService {
     return this.transactionRunner.run(async (manager) => {
       await this.applyCorrectionToAttendance(correction, targetEmployee, manager);
 
-      return this.correctionRepository.update(
+      const updated = await this.correctionRepository.update(
         correction.id,
         {
           status: AttendanceCorrectionStatus.APPROVED,
@@ -234,16 +236,54 @@ export class AttendanceService {
         },
         manager,
       );
+
+      // Checklist §7: "Ada audit log untuk perubahan data ... approval".
+      await this.auditLogService.record(
+        {
+          userId: actingUser.userId,
+          action: 'APPROVE_ATTENDANCE_CORRECTION',
+          entityType: 'attendance_correction',
+          entityId: correction.id,
+          oldValue: { status: AttendanceCorrectionStatus.PENDING },
+          newValue: { status: AttendanceCorrectionStatus.APPROVED, approvedBy: actingEmployee.id },
+        },
+        manager,
+      );
+
+      return updated;
     });
   }
 
   async rejectCorrection(actingUser: AuthenticatedUser, correctionId: string): Promise<AttendanceCorrection> {
     const { correction, actingEmployee } = await this.loadCorrectionForDecision(actingUser, correctionId);
 
-    return this.correctionRepository.update(correction.id, {
-      status: AttendanceCorrectionStatus.REJECTED,
-      approvedBy: actingEmployee.id,
-      approvedAt: new Date(),
+    // attendance_corrections + audit_logs — dua tabel, dibungkus satu
+    // transaction (checklist §7: "Semua operasi multi-tabel dibungkus
+    // transaction").
+    return this.transactionRunner.run(async (manager) => {
+      const updated = await this.correctionRepository.update(
+        correction.id,
+        {
+          status: AttendanceCorrectionStatus.REJECTED,
+          approvedBy: actingEmployee.id,
+          approvedAt: new Date(),
+        },
+        manager,
+      );
+
+      await this.auditLogService.record(
+        {
+          userId: actingUser.userId,
+          action: 'REJECT_ATTENDANCE_CORRECTION',
+          entityType: 'attendance_correction',
+          entityId: correction.id,
+          oldValue: { status: AttendanceCorrectionStatus.PENDING },
+          newValue: { status: AttendanceCorrectionStatus.REJECTED, approvedBy: actingEmployee.id },
+        },
+        manager,
+      );
+
+      return updated;
     });
   }
 
