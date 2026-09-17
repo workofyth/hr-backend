@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { AuditLog } from '../../database/entities/audit-log.entity';
 
 export interface RecordAuditLogInput {
@@ -23,9 +23,16 @@ export interface RecordAuditLogInput {
 export class AuditLogService {
   constructor(@InjectRepository(AuditLog) private readonly repository: Repository<AuditLog>) {}
 
-  async record(input: RecordAuditLogInput): Promise<void> {
-    await this.repository.save(
-      this.repository.create({
+  /**
+   * `manager` opsional — WAJIB diteruskan saat dipanggil di dalam
+   * `TransactionRunner.run()` supaya baris audit_logs ikut rollback jika
+   * operasi lain di transaction yang sama gagal (checklist §7: "Semua
+   * operasi multi-tabel dibungkus transaction").
+   */
+  async record(input: RecordAuditLogInput, manager?: EntityManager): Promise<void> {
+    const repository = manager ? manager.getRepository(AuditLog) : this.repository;
+    await repository.save(
+      repository.create({
         userId: input.userId,
         action: input.action,
         entityType: input.entityType,

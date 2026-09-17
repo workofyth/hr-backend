@@ -159,22 +159,30 @@ export class PayrollService {
       throw new NotFoundException('Data karyawan approver tidak ditemukan');
     }
 
-    const approved = await this.payrollRepository.updatePeriod(periodId, {
-      status: PayrollPeriodStatus.APPROVED,
-      approvedBy: actingEmployee.id,
-    });
+    // payroll_periods + audit_logs — dua tabel, dibungkus satu transaction
+    // (checklist §7: "Semua operasi multi-tabel dibungkus transaction").
+    return this.transactionRunner.run(async (manager) => {
+      const approved = await this.payrollRepository.updatePeriod(
+        periodId,
+        { status: PayrollPeriodStatus.APPROVED, approvedBy: actingEmployee.id },
+        manager,
+      );
 
-    // Checklist §7: "Ada audit log untuk perubahan data gaji & approval".
-    await this.auditLogService.record({
-      userId: actingUser.userId,
-      action: 'APPROVE_PAYROLL',
-      entityType: 'payroll_period',
-      entityId: periodId,
-      oldValue: { status: period.status },
-      newValue: { status: PayrollPeriodStatus.APPROVED, approvedBy: actingEmployee.id },
-    });
+      // Checklist §7: "Ada audit log untuk perubahan data gaji & approval".
+      await this.auditLogService.record(
+        {
+          userId: actingUser.userId,
+          action: 'APPROVE_PAYROLL',
+          entityType: 'payroll_period',
+          entityId: periodId,
+          oldValue: { status: period.status },
+          newValue: { status: PayrollPeriodStatus.APPROVED, approvedBy: actingEmployee.id },
+        },
+        manager,
+      );
 
-    return approved;
+      return approved;
+    });
   }
 
   /**

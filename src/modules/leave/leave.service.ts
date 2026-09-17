@@ -26,6 +26,7 @@ import { LeaveCancelledEvent } from './events/leave-cancelled.event';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { formatDateOnly } from '../../common/utils/date.util';
+import { AuditLogService } from '../../common/services/audit-log.service';
 
 /**
  * Logika bisnis modul Leave — roadmap-aplikasi-hr.md Phase 3, pattern di
@@ -42,6 +43,7 @@ export class LeaveService {
     @Inject(TRANSACTION_RUNNER) private readonly transactionRunner: TransactionRunner,
     private readonly approvalChainFactory: LeaveApprovalChainFactory,
     private readonly eventEmitter: EventEmitter2,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   findLeaveTypes(): Promise<LeaveType[]> {
@@ -144,6 +146,20 @@ export class LeaveService {
         manager,
       );
 
+      // Checklist §7: "Ada audit log untuk perubahan data ... approval"
+      // (contoh eksplisit dokumen: "siapa approve cuti").
+      await this.auditLogService.record(
+        {
+          userId: actingUser.userId,
+          action: 'APPROVE_LEAVE_REQUEST',
+          entityType: 'leave_request',
+          entityId: leaveRequest.id,
+          oldValue: { approvalLevel: currentApproval.level, status: LeaveApprovalStatus.PENDING },
+          newValue: { approvalLevel: currentApproval.level, status: LeaveApprovalStatus.APPROVED },
+        },
+        manager,
+      );
+
       const nextLevel = approvals
         .filter((approval) => approval.level > currentApproval.level)
         .sort((a, b) => a.level - b.level)[0];
@@ -190,6 +206,18 @@ export class LeaveService {
         manager,
       );
 
+      await this.auditLogService.record(
+        {
+          userId: actingUser.userId,
+          action: 'REJECT_LEAVE_REQUEST',
+          entityType: 'leave_request',
+          entityId: leaveRequest.id,
+          oldValue: { approvalLevel: currentApproval.level, status: LeaveApprovalStatus.PENDING },
+          newValue: { approvalLevel: currentApproval.level, status: LeaveApprovalStatus.REJECTED },
+        },
+        manager,
+      );
+
       return this.leaveRepository.updateRequest(leaveRequest.id, { status: LeaveRequestStatus.REJECTED }, manager);
     });
   }
@@ -220,6 +248,18 @@ export class LeaveService {
       const cancelled = await this.leaveRepository.updateRequest(
         leaveRequest.id,
         { status: LeaveRequestStatus.CANCELLED },
+        manager,
+      );
+
+      await this.auditLogService.record(
+        {
+          userId,
+          action: 'CANCEL_LEAVE_REQUEST',
+          entityType: 'leave_request',
+          entityId: leaveRequest.id,
+          oldValue: { status: leaveRequest.status },
+          newValue: { status: LeaveRequestStatus.CANCELLED },
+        },
         manager,
       );
 

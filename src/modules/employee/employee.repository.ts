@@ -59,9 +59,14 @@ export class EmployeeRepository implements IEmployeeRepository {
       .getOne();
   }
 
-  findActiveByCompany(companyId: string): Promise<Employee[]> {
+  findActiveByCompany(companyId: string, branchId?: string, departmentId?: string): Promise<Employee[]> {
     return this.repository.find({
-      where: { companyId, status: EmployeeStatus.ACTIVE },
+      where: {
+        companyId,
+        status: EmployeeStatus.ACTIVE,
+        ...(branchId ? { branchId } : {}),
+        ...(departmentId ? { departmentId } : {}),
+      },
       relations: EmployeeRepository.DISPLAY_RELATIONS,
     });
   }

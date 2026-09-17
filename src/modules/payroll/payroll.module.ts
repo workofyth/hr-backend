@@ -45,5 +45,9 @@ import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/tra
     { provide: PAYROLL_REPOSITORY, useClass: PayrollRepository },
     { provide: TRANSACTION_RUNNER, useClass: TypeOrmTransactionRunner },
   ],
+  // PAYROLL_REPOSITORY diekspor supaya modul lain (mis. reports — payroll
+  // summary, roadmap Phase 5) bisa membaca payroll_items tanpa mengakses
+  // tabelnya langsung (Repository Pattern, §3).
+  exports: [PAYROLL_REPOSITORY],
 })
 export class PayrollModule {}

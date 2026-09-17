@@ -12,6 +12,7 @@ import { LeaveApproval, LeaveApprovalStatus } from './entities/leave-approval.en
 import { Employee } from '../employee/entities/employee.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { LEAVE_APPROVED_EVENT, LEAVE_CANCELLED_EVENT } from './leave.constants';
+import { AuditLogService } from '../../common/services/audit-log.service';
 
 describe('LeaveService', () => {
   let service: LeaveService;
@@ -20,6 +21,7 @@ describe('LeaveService', () => {
   let transactionRunner: TransactionRunner;
   let approvalChainFactory: jest.Mocked<LeaveApprovalChainFactory>;
   let eventEmitter: jest.Mocked<EventEmitter2>;
+  let auditLogService: jest.Mocked<AuditLogService>;
 
   const employee = {
     id: 'employee-1',
@@ -45,6 +47,7 @@ describe('LeaveService', () => {
       findApprovalsByRequestId: jest.fn(),
       createApproval: jest.fn(),
       updateApproval: jest.fn(),
+      countByEmployeeAndStatus: jest.fn(),
     };
 
     employeeRepository = {
@@ -64,6 +67,7 @@ describe('LeaveService', () => {
 
     approvalChainFactory = { buildFor: jest.fn() } as unknown as jest.Mocked<LeaveApprovalChainFactory>;
     eventEmitter = { emit: jest.fn() } as unknown as jest.Mocked<EventEmitter2>;
+    auditLogService = { record: jest.fn() } as unknown as jest.Mocked<AuditLogService>;
 
     service = new LeaveService(
       leaveRepository,
@@ -71,6 +75,7 @@ describe('LeaveService', () => {
       transactionRunner,
       approvalChainFactory,
       eventEmitter,
+      auditLogService,
     );
 
     employeeRepository.findByUserId.mockResolvedValue(employee);
@@ -290,6 +295,10 @@ describe('LeaveService', () => {
           dates: ['2026-03-10', '2026-03-11'],
         }),
       );
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'APPROVE_LEAVE_REQUEST', entityType: 'leave_request', entityId: 'req-1' }),
+        undefined,
+      );
       expect(result.status).toBe(LeaveRequestStatus.APPROVED);
     });
 
@@ -354,6 +363,10 @@ describe('LeaveService', () => {
         undefined,
       );
       expect(leaveRepository.updateBalance).not.toHaveBeenCalled();
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'REJECT_LEAVE_REQUEST', entityType: 'leave_request', entityId: 'req-1' }),
+        undefined,
+      );
       expect(result.status).toBe(LeaveRequestStatus.REJECTED);
     });
   });
@@ -389,6 +402,10 @@ describe('LeaveService', () => {
 
       expect(leaveRepository.updateBalance).not.toHaveBeenCalled();
       expect(eventEmitter.emit).not.toHaveBeenCalled();
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'CANCEL_LEAVE_REQUEST', entityType: 'leave_request', entityId: 'req-1' }),
+        undefined,
+      );
       expect(result.status).toBe(LeaveRequestStatus.CANCELLED);
     });
 

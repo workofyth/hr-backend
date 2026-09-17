@@ -1,5 +1,5 @@
 import { DeepPartial, EntityManager } from 'typeorm';
-import { Attendance } from './entities/attendance.entity';
+import { Attendance, AttendanceStatus } from './entities/attendance.entity';
 import { EmployeeShiftAssignment } from '../employee/entities/employee-shift-assignment.entity';
 
 export interface PaginationParams {
@@ -17,6 +17,8 @@ export interface FindHistoryParams extends PaginationParams {
   month?: number;
   year?: number;
 }
+
+export type AttendanceStatusCounts = Record<AttendanceStatus, number> & { totalWorkDurationMinutes: number };
 
 /**
  * Repository Pattern — backend-architecture-hr.md §3: AttendanceService
@@ -38,4 +40,13 @@ export interface IAttendanceRepository {
     employeeId: string,
     date: string,
   ): Promise<EmployeeShiftAssignment | null>;
+  /**
+   * Rekap jumlah hari per status (ON_TIME/LATE/EARLY_LEAVE/ABSENT/ON_LEAVE/
+   * WFH) + total menit kerja seorang karyawan dalam rentang tanggal —
+   * dipakai `reports` module (roadmap Phase 5: "Laporan absensi per
+   * karyawan"). Query `WHERE employee_id = :id AND attendance_date BETWEEN
+   * ...` memanfaatkan composite index `(employee_id, attendance_date)`
+   * (§5 "Indexing penting").
+   */
+  countStatusesByEmployee(employeeId: string, startDate: string, endDate: string): Promise<AttendanceStatusCounts>;
 }

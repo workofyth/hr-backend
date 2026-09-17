@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DeepPartial, EntityManager, Repository } from 'typeorm';
-import { Attendance } from './entities/attendance.entity';
+import { Attendance, AttendanceStatus } from './entities/attendance.entity';
 import { EmployeeShiftAssignment } from '../employee/entities/employee-shift-assignment.entity';
 import {
+  AttendanceStatusCounts,
   FindHistoryParams,
   IAttendanceRepository,
   PaginatedResult,
@@ -89,5 +90,38 @@ export class AttendanceRepository implements IAttendanceRepository {
       .andWhere('(assignment.end_date IS NULL OR assignment.end_date >= :date)', { date })
       .orderBy('assignment.effective_date', 'DESC')
       .getOne();
+  }
+
+  async countStatusesByEmployee(
+    employeeId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<AttendanceStatusCounts> {
+    const rows = await this.repository
+      .createQueryBuilder('attendance')
+      .select('attendance.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .addSelect('COALESCE(SUM(attendance.work_duration_minutes), 0)', 'totalMinutes')
+      .where('attendance.employee_id = :employeeId', { employeeId })
+      .andWhere('attendance.attendance_date BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .groupBy('attendance.status')
+      .getRawMany<{ status: AttendanceStatus; count: string; totalMinutes: string }>();
+
+    const counts: AttendanceStatusCounts = {
+      [AttendanceStatus.ON_TIME]: 0,
+      [AttendanceStatus.LATE]: 0,
+      [AttendanceStatus.EARLY_LEAVE]: 0,
+      [AttendanceStatus.ABSENT]: 0,
+      [AttendanceStatus.ON_LEAVE]: 0,
+      [AttendanceStatus.WFH]: 0,
+      totalWorkDurationMinutes: 0,
+    };
+
+    for (const row of rows) {
+      counts[row.status] = Number(row.count);
+      counts.totalWorkDurationMinutes += Number(row.totalMinutes);
+    }
+
+    return counts;
   }
 }

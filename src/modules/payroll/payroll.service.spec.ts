@@ -31,6 +31,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
   let leaveRepository: jest.Mocked<ILeaveRepository>;
   let transactionRunner: TransactionRunner;
   let eventEmitter: jest.Mocked<EventEmitter2>;
+  let auditLogService: jest.Mocked<AuditLogService>;
 
   // Periode Juni 2026: 30 hari kalender, 4 hari Minggu -> 26 hari kerja
   // (dihitung ulang & diverifikasi manual via kalender sungguhan).
@@ -108,6 +109,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       create: jest.fn(),
       update: jest.fn(),
       findActiveShiftAssignment: jest.fn(),
+      countStatusesByEmployee: jest.fn(),
     };
 
     leaveRepository = {
@@ -124,6 +126,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       findApprovalsByRequestId: jest.fn(),
       createApproval: jest.fn(),
       updateApproval: jest.fn(),
+      countByEmployeeAndStatus: jest.fn(),
     };
 
     const runMock = jest.fn((work: (manager: never) => Promise<unknown>) => work(undefined as never));
@@ -140,7 +143,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
     const dailyCalculator = new DailyWagePayrollCalculator(overtimeCalculator, bpjsCalculator, pph21Calculator);
     const calculatorFactory = new PayrollCalculatorFactory(monthlyCalculator, dailyCalculator);
     const thrCalculator = new ThrCalculator();
-    const auditLogService = { record: jest.fn() } as unknown as AuditLogService;
+    auditLogService = { record: jest.fn() } as unknown as jest.Mocked<AuditLogService>;
 
     service = new PayrollService(
       payrollRepository,
@@ -298,5 +301,46 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       expect.objectContaining({ payrollPeriodId: 'period-1', payrollItemIds: ['item-1'] }),
     );
     expect(result.status).toBe(PayrollPeriodStatus.GENERATED);
+  });
+
+  describe('approve', () => {
+    it('mengubah status GENERATED->APPROVED & mencatat audit log DALAM SATU transaction (checklist §7)', async () => {
+      payrollRepository.findPeriodById.mockResolvedValue({
+        id: 'period-1',
+        status: PayrollPeriodStatus.GENERATED,
+      } as PayrollPeriod);
+      employeeRepository.findByUserId.mockResolvedValue({ id: 'hr-employee-1' } as Employee);
+      payrollRepository.updatePeriod.mockResolvedValue({
+        id: 'period-1',
+        status: PayrollPeriodStatus.APPROVED,
+        approvedBy: 'hr-employee-1',
+      } as PayrollPeriod);
+
+      const result = await service.approve({ userId: 'hr-user-1', role: 'HR_ADMIN' as never }, 'period-1');
+
+      expect(payrollRepository.updatePeriod).toHaveBeenCalledWith(
+        'period-1',
+        { status: PayrollPeriodStatus.APPROVED, approvedBy: 'hr-employee-1' },
+        undefined, // dari mock TransactionRunner (lihat runMock di beforeEach)
+      );
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'APPROVE_PAYROLL', entityType: 'payroll_period', entityId: 'period-1' }),
+        undefined,
+      );
+      expect(result.status).toBe(PayrollPeriodStatus.APPROVED);
+    });
+
+    it('menolak dengan ConflictException jika periode belum GENERATED', async () => {
+      payrollRepository.findPeriodById.mockResolvedValue({
+        id: 'period-1',
+        status: PayrollPeriodStatus.DRAFT,
+      } as PayrollPeriod);
+
+      await expect(
+        service.approve({ userId: 'hr-user-1', role: 'HR_ADMIN' as never }, 'period-1'),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(payrollRepository.updatePeriod).not.toHaveBeenCalled();
+      expect(auditLogService.record).not.toHaveBeenCalled();
+    });
   });
 });

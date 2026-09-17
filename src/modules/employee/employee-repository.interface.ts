@@ -33,8 +33,11 @@ export interface IEmployeeRepository {
    * Semua karyawan ACTIVE pada sebuah company, tanpa paginasi — dipakai
    * PayrollService.generate() (§6: "Ambil semua employee aktif") untuk
    * menghitung payroll_items satu company sekaligus dalam satu transaction.
+   * `branchId`/`departmentId` opsional — dipakai `reports` module (roadmap
+   * Phase 5: "Laporan absensi/cuti per karyawan/departemen/cabang") untuk
+   * mempersempit scope laporan tanpa menambah method baru.
    */
-  findActiveByCompany(companyId: string): Promise<Employee[]>;
+  findActiveByCompany(companyId: string, branchId?: string, departmentId?: string): Promise<Employee[]>;
   create(data: DeepPartial<Employee>, manager?: EntityManager): Promise<Employee>;
   update(id: string, data: DeepPartial<Employee>): Promise<Employee>;
   softDelete(id: string): Promise<void>;

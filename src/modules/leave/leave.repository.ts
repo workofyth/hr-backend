@@ -126,4 +126,8 @@ export class LeaveRepository implements ILeaveRepository {
     await repository.update(id, data);
     return repository.findOneOrFail({ where: { id } });
   }
+
+  countByEmployeeAndStatus(employeeId: string, status: LeaveRequestStatus): Promise<number> {
+    return this.leaveRequestRepository.count({ where: { employeeId, status } });
+  }
 }

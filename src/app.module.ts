@@ -13,6 +13,7 @@ import { OrganizationModule } from './modules/organization/organization.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { LeaveModule } from './modules/leave/leave.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { HealthController } from './modules/health/health.controller';
 
@@ -44,6 +45,7 @@ import { HealthController } from './modules/health/health.controller';
     AttendanceModule,
     LeaveModule,
     PayrollModule,
+    ReportsModule,
     NotificationModule,
   ],
   controllers: [HealthController],

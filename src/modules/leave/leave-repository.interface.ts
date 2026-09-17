@@ -1,7 +1,7 @@
 import { DeepPartial, EntityManager } from 'typeorm';
 import { LeaveType } from './entities/leave-type.entity';
 import { LeaveBalance } from './entities/leave-balance.entity';
-import { LeaveRequest } from './entities/leave-request.entity';
+import { LeaveRequest, LeaveRequestStatus } from './entities/leave-request.entity';
 import { LeaveApproval } from './entities/leave-approval.entity';
 
 export interface PaginationParams {
@@ -46,4 +46,13 @@ export interface ILeaveRepository {
   findApprovalsByRequestId(requestId: string): Promise<LeaveApproval[]>;
   createApproval(data: DeepPartial<LeaveApproval>, manager?: EntityManager): Promise<LeaveApproval>;
   updateApproval(id: string, data: DeepPartial<LeaveApproval>, manager?: EntityManager): Promise<LeaveApproval>;
+
+  /**
+   * Hitung jumlah `leave_requests` seorang karyawan pada satu `status` —
+   * dipakai `reports` module (roadmap Phase 5: "Laporan cuti") untuk
+   * menghitung pengajuan PENDING yang masih menunggu approval. Query
+   * `WHERE employee_id = :id AND status = :status` memanfaatkan composite
+   * index `(employee_id, status)` (§5 "Indexing penting").
+   */
+  countByEmployeeAndStatus(employeeId: string, status: LeaveRequestStatus): Promise<number>;
 }

@@ -50,6 +50,7 @@ describe('AttendanceService', () => {
       create: jest.fn(),
       update: jest.fn(),
       findActiveShiftAssignment: jest.fn(),
+      countStatusesByEmployee: jest.fn(),
     };
 
     correctionRepository = {
