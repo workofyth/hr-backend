@@ -43,9 +43,15 @@ describe('BpjsCalculator', () => {
       createPeriod: jest.fn(),
       updatePeriod: jest.fn(),
       findItemsByPeriod: jest.fn(),
+      findItemById: jest.fn(),
+      findItemsByEmployeeAndYear: jest.fn(),
       createItem: jest.fn(),
       findItemDetails: jest.fn(),
       createItemDetail: jest.fn(),
+      findPayslipByPayrollItem: jest.fn(),
+      createPayslip: jest.fn(),
+      findSeveranceCalculationsByEmployee: jest.fn(),
+      createSeveranceCalculation: jest.fn(),
     };
     calculator = new BpjsCalculator(payrollRepository);
   });

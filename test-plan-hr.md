@@ -6,10 +6,14 @@ Keamanan & Deployment) dan `backend-architecture-hr.md` §7 (checklist
 Attendance (Phase 2), Leave (Phase 3), Payroll (Phase 4), dan Reports
 (Phase 5) selesai diimplementasikan di backend.
 
-> Status implementasi saat dokumen ini ditulis: **belum ada infrastruktur
-> e2e test** (folder `test/`, `supertest`, `jest-e2e.json`) — baru unit test
-> per service/calculator dengan mock repository. Dokumen ini adalah RENCANA
-> untuk mengisi kekosongan itu, bukan laporan bahwa e2e test sudah berjalan.
+> Status implementasi saat dokumen ini ditulis: **sudah ada smoke test e2e
+> minimal** (`test/jest-e2e.json` + `test/app.e2e-spec.ts`) yang boot
+> `AppModule` sungguhan (bukan mock) dan memastikan endpoint lintas modul
+> tidak melempar 500 — lihat §2.3 untuk alasan test ini penting & bug nyata
+> yang sudah ditemukan lewatnya. Cakupan skenario BISNIS lengkap (payroll 3
+> skenario, cuti multi-level, dst — §2.2 s/d akhir dokumen) masih RENCANA,
+> belum diimplementasikan sebagai e2e spec — baru unit test per
+> service/calculator dengan mock repository yang sudah ada.
 
 ---
 
@@ -42,10 +46,32 @@ rollout semua cabang").
 
 | Item | Status | Tindakan |
 |---|---|---|
-| `test/jest-e2e.json` + `test/app.e2e-spec.ts` | Belum ada | Buat sebelum E2E pertama dijalankan |
-| Dependency `supertest` | Belum ada di `package.json` | `npm i -D supertest @types/supertest` |
-| Database test terisolasi | Belum ada | Postgres terpisah dari dev/prod (docker-compose profile `test`), migration dijalankan bersih tiap run, `DROP SCHEMA public CASCADE` di `afterAll` |
+| `test/jest-e2e.json` + `test/app.e2e-spec.ts` | ✅ Ada (smoke test, `npm run test:e2e`) | Perluas dengan skenario bisnis §2.2 dst. |
+| Dependency `supertest` | ✅ Ada di `package.json` | — |
+| Database test terisolasi | Belum ada — `test:e2e` saat ini jalan di atas DB dev (native Postgres lokal, port sesuai `.env`), bukan DB test terpisah | Postgres terpisah dari dev/prod (docker-compose profile `test`), migration dijalankan bersih tiap run, `DROP SCHEMA public CASCADE` di `afterAll` |
 | Seed data referensi wajib | **Belum ada** — `src/database/seeders/seed.ts` masih placeholder | Lihat §2.2 — tanpa ini payroll TIDAK BISA digenerate sama sekali |
+
+### 2.3 Bug nyata yang ditemukan lewat smoke test e2e (bukan unit test)
+
+Saat menambahkan `GET /payroll/periods` (roadmap Phase 4), endpoint ini
+melempar `500 EntityMetadataNotFoundError: No metadata for "PayrollPeriod"
+was found` di container Docker sungguhan — padahal `payroll.service.spec.ts`
+(mock repository) 100% hijau. **Root cause**: `src/config/database.config.ts`
+— opsi `entities` yang dipakai `TypeOrmModule.forRootAsync()` hanya berisi
+`coreEntities`/`authEntities`/`employeeEntities`, TIDAK PERNAH diperbarui
+saat `attendanceEntities`/`leaveEntities`/`payrollEntities`/`Notification`
+ditambahkan di module masing-masing. `TypeOrmModule.forFeature([...])` di
+level module TIDAK mendaftarkan entity baru ke `DataSource` — hanya
+membuat provider repository untuk entity yang SUDAH ada di `entities` root.
+Akibatnya: **hampir seluruh endpoint Payroll, Attendance (selain
+shift-assignments), Leave, dan Notification yang menyentuh DB sungguhan
+akan 500** sejak modul-modul itu dibuat — sudah diperbaiki (`entities` di
+`database.config.ts` sekarang mendaftarkan seluruh grup entity), tapi
+**inilah alasan §2.1 tetap dipertahankan**: kelas bug ini TIDAK MUNGKIN
+tertangkap oleh unit test ber-mock-repository karena `DataSource` asli
+tidak pernah disentuh. `test/app.e2e-spec.ts` sekarang menjaga regresi
+kelas bug ini secara spesifik (assert status `<500` untuk endpoint lintas
+modul dengan JWT sungguhan, tanpa perlu seed data).
 
 ### 2.2 Seed data yang WAJIB ada sebelum skenario E2E Payroll/Leave bisa jalan
 

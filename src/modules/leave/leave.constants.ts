@@ -13,3 +13,11 @@ export const LEAVE_APPROVED_EVENT = 'leave.approved';
  * AttendanceService bisa membatalkan tanda ON_LEAVE yang sebelumnya dibuat.
  */
 export const LEAVE_CANCELLED_EVENT = 'leave.cancelled';
+
+/**
+ * Dipancarkan saat pengajuan cuti ditolak — didengarkan NotificationModule
+ * untuk memberitahu karyawan pengaju (§6, Observer Pattern). Attendance
+ * tidak perlu tahu tentang event ini (tidak ada attendance yang perlu
+ * dibatalkan untuk pengajuan yang belum pernah di-approve).
+ */
+export const LEAVE_REJECTED_EVENT = 'leave.rejected';

@@ -25,3 +25,7 @@ coverage/
 # dokumen karyawan yang diupload lokal (dev) — di production disimpan di
 # volume Docker `employee_documents`, tidak pernah masuk git
 /uploads/
+
+# hasil scripts/backup.sh — dump database berisi data sensitif, tidak
+# pernah masuk git
+/backups/

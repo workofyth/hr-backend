@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EntityManager } from 'typeorm';
-import { LEAVE_APPROVED_EVENT, LEAVE_CANCELLED_EVENT, LEAVE_REPOSITORY } from './leave.constants';
+import { LEAVE_APPROVED_EVENT, LEAVE_CANCELLED_EVENT, LEAVE_REJECTED_EVENT, LEAVE_REPOSITORY } from './leave.constants';
 import { ILeaveRepository, PaginatedResult } from './leave-repository.interface';
 import { EMPLOYEE_REPOSITORY } from '../employee/employee.constants';
 import { IEmployeeRepository } from '../employee/employee-repository.interface';
@@ -23,6 +23,7 @@ import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { LeaveDecisionDto } from './dto/leave-decision.dto';
 import { LeaveApprovedEvent } from './events/leave-approved.event';
 import { LeaveCancelledEvent } from './events/leave-cancelled.event';
+import { LeaveRejectedEvent } from './events/leave-rejected.event';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { formatDateOnly } from '../../common/utils/date.util';
@@ -236,7 +237,25 @@ export class LeaveService {
         manager,
       );
 
-      return this.leaveRepository.updateRequest(leaveRequest.id, { status: LeaveRequestStatus.REJECTED }, manager);
+      const rejected = await this.leaveRepository.updateRequest(
+        leaveRequest.id,
+        { status: LeaveRequestStatus.REJECTED },
+        manager,
+      );
+
+      this.eventEmitter.emit(
+        LEAVE_REJECTED_EVENT,
+        new LeaveRejectedEvent(
+          leaveRequest.id,
+          leaveRequest.employeeId,
+          leaveRequest.employee.userId,
+          leaveRequest.startDate,
+          leaveRequest.endDate,
+          dto.comment ?? null,
+        ),
+      );
+
+      return rejected;
     });
   }
 

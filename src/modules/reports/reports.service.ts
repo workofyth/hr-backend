@@ -12,6 +12,8 @@ import { PayrollPeriodStatus } from '../payroll/entities/payroll-period.entity';
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
 import { LeaveSummaryQueryDto } from './dto/leave-summary-query.dto';
 import { PayrollSummaryQueryDto } from './dto/payroll-summary-query.dto';
+import { HeadcountSummaryQueryDto } from './dto/headcount-summary-query.dto';
+import { EmployeeStatus, EmploymentType } from '../employee/entities/employee.entity';
 import { parseDecimal } from '../../common/utils/currency.util';
 
 export interface EmployeeAttendanceSummary {
@@ -33,6 +35,19 @@ export interface EmployeeLeaveSummary {
   carriedOverDays: number;
   remainingDays: number;
   pendingRequestCount: number;
+}
+
+export interface NamedCount {
+  name: string;
+  count: number;
+}
+
+export interface HeadcountSummary {
+  total: number;
+  byStatus: Record<EmployeeStatus, number>;
+  byEmploymentType: Record<EmploymentType, number>;
+  byDepartment: NamedCount[];
+  byBranch: NamedCount[];
 }
 
 export interface PayrollSummaryReport {
@@ -187,6 +202,45 @@ export class ReportsService {
       employeeCount: items.length,
       ...totals,
     };
+  }
+
+  /**
+   * Dashboard headcount (roadmap Phase 5) — snapshot SEKARANG saja
+   * (jumlah per status/departemen/cabang/jenis kontrak). Tren dari waktu
+   * ke waktu (turnover bulanan, dst) butuh pencatatan time-series yang
+   * belum ada di skema §5.5 — di luar cakupan method ini, SENGAJA tidak
+   * dipalsukan dengan data yang tidak akurat.
+   */
+  async getHeadcountSummary(query: HeadcountSummaryQueryDto): Promise<HeadcountSummary> {
+    const employees = await this.employeeRepository.findAllByCompany(query.companyId);
+
+    const byStatus = this.countBy(employees, (e) => e.status, Object.values(EmployeeStatus));
+    const byEmploymentType = this.countBy(employees, (e) => e.employmentType, Object.values(EmploymentType));
+
+    const byDepartmentMap = new Map<string, number>();
+    const byBranchMap = new Map<string, number>();
+    for (const employee of employees) {
+      const departmentName = employee.department?.name ?? 'Tanpa Departemen';
+      byDepartmentMap.set(departmentName, (byDepartmentMap.get(departmentName) ?? 0) + 1);
+      const branchName = employee.branch?.name ?? 'Tanpa Cabang';
+      byBranchMap.set(branchName, (byBranchMap.get(branchName) ?? 0) + 1);
+    }
+
+    return {
+      total: employees.length,
+      byStatus,
+      byEmploymentType,
+      byDepartment: [...byDepartmentMap.entries()].map(([name, count]) => ({ name, count })),
+      byBranch: [...byBranchMap.entries()].map(([name, count]) => ({ name, count })),
+    };
+  }
+
+  private countBy<T, K extends string>(items: T[], keyOf: (item: T) => K, allKeys: K[]): Record<K, number> {
+    const result = Object.fromEntries(allKeys.map((key) => [key, 0])) as Record<K, number>;
+    for (const item of items) {
+      result[keyOf(item)] += 1;
+    }
+    return result;
   }
 
   private formatDate(year: number, month: number, day: number): string {

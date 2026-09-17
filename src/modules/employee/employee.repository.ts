@@ -71,6 +71,13 @@ export class EmployeeRepository implements IEmployeeRepository {
     });
   }
 
+  findAllByCompany(companyId: string): Promise<Employee[]> {
+    return this.repository.find({
+      where: { companyId },
+      relations: EmployeeRepository.DISPLAY_RELATIONS,
+    });
+  }
+
   create(data: DeepPartial<Employee>, manager?: EntityManager): Promise<Employee> {
     const repository = this.getRepository(manager);
     const employee = repository.create(data);

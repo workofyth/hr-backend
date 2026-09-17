@@ -34,10 +34,12 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
     volumes:
-      # Dokumen karyawan (KTP/kontrak/ijazah, roadmap Phase 1) disimpan di
-      # disk lokal (belum ada kredensial S3/MinIO) — volume ini supaya file
-      # tidak hilang setiap `docker compose up --build`.
+      # Dokumen karyawan (KTP/kontrak/ijazah, roadmap Phase 1) & slip gaji
+      # PDF (roadmap Phase 4) disimpan di disk lokal (belum ada kredensial
+      # S3/MinIO) — volume ini supaya file tidak hilang setiap
+      # `docker compose up --build`.
       - employee_documents:/app/uploads/employee-documents
+      - payroll_payslips:/app/uploads/payslips
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,3 +63,4 @@ services:
 volumes:
   postgres_data:
   employee_documents:
+  payroll_payslips:

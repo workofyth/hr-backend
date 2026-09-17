@@ -36,10 +36,10 @@ COPY --from=deps-prod /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY public ./public
 COPY docker/entrypoint.sh ./entrypoint.sh
-# Dokumen karyawan (§5.2) disimpan di disk lokal, dimount sebagai volume
-# Docker `employee_documents` (docker-compose.yml) — dibuat & di-chown ke
-# node di sini supaya proses non-root (USER node di bawah) bisa menulis.
-RUN mkdir -p ./uploads/employee-documents \
+# Dokumen karyawan (§5.2) & slip gaji PDF (§5.5) disimpan di disk lokal,
+# dimount sebagai volume Docker (docker-compose.yml) — dibuat & di-chown
+# ke node di sini supaya proses non-root (USER node di bawah) bisa menulis.
+RUN mkdir -p ./uploads/employee-documents ./uploads/payslips \
   && chmod +x ./entrypoint.sh \
   && chown -R node:node /app
 

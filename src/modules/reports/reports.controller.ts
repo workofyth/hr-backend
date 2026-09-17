@@ -8,6 +8,7 @@ import { ReportsService } from './reports.service';
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
 import { LeaveSummaryQueryDto } from './dto/leave-summary-query.dto';
 import { PayrollSummaryQueryDto } from './dto/payroll-summary-query.dto';
+import { HeadcountSummaryQueryDto } from './dto/headcount-summary-query.dto';
 
 /**
  * Hanya menerima request, validasi lewat DTO, dan memanggil ReportsService
@@ -39,5 +40,11 @@ export class ReportsController {
   @Get('payroll-summary')
   getPayrollSummary(@Query() query: PayrollSummaryQueryDto) {
     return this.reportsService.getPayrollSummary(query);
+  }
+
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER, UserRole.FINANCE)
+  @Get('headcount-summary')
+  getHeadcountSummary(@Query() query: HeadcountSummaryQueryDto) {
+    return this.reportsService.getHeadcountSummary(query);
   }
 }

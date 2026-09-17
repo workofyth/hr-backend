@@ -4,6 +4,10 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { coreEntities } from '../database/entities';
 import { authEntities } from '../modules/auth/entities';
 import { employeeEntities } from '../modules/employee/entities';
+import { attendanceEntities } from '../modules/attendance/entities';
+import { leaveEntities } from '../modules/leave/entities';
+import { payrollEntities } from '../modules/payroll/entities';
+import { Notification } from '../modules/notification/entities/notification.entity';
 
 /**
  * Satu-satunya tempat yang merakit opsi koneksi TypeORM, dipakai oleh:
@@ -26,7 +30,15 @@ export function buildTypeOrmOptions(config: ConfigService): DataSourceOptions {
     synchronize: config.get<boolean>('database.synchronize'),
     logging: config.get<boolean>('database.logging'),
     namingStrategy: new SnakeNamingStrategy(),
-    entities: [...coreEntities, ...authEntities, ...employeeEntities],
+    entities: [
+      ...coreEntities,
+      ...authEntities,
+      ...employeeEntities,
+      ...attendanceEntities,
+      ...leaveEntities,
+      ...payrollEntities,
+      Notification,
+    ],
     migrations: [__dirname + '/../database/migrations/*.{ts,js}'],
     migrationsTableName: 'schema_migrations',
   };

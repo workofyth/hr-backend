@@ -1,12 +1,25 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { PAYROLL_GENERATED_EVENT, PAYROLL_REPOSITORY } from './payroll.constants';
+import { randomUUID } from 'crypto';
+import { writeFile } from 'fs/promises';
+import { join } from 'path';
+import { PAYROLL_GENERATED_EVENT, PAYROLL_REPOSITORY, PAYSLIPS_UPLOAD_DIR } from './payroll.constants';
 import { IPayrollRepository } from './payroll-repository.interface';
 import { PayrollCalculatorFactory } from './calculators/payroll-calculator.factory';
 import { ThrCalculator, ThrCalculationResult } from './calculators/thr.calculator';
+import { PayslipPdfGenerator } from './payslip-pdf.generator';
+import { SeveranceCalculator } from './calculators/severance.calculator';
+import {
+  Pph21AnnualReconciliationCalculator,
+  Pph21AnnualReconciliationResult,
+} from './calculators/pph21-annual-reconciliation.calculator';
+import { resolvePtkpStatus } from './utils/ptkp-status.util';
 import { PayrollPeriod, PayrollPeriodStatus } from './entities/payroll-period.entity';
 import { PayrollItem } from './entities/payroll-item.entity';
 import { PayrollItemDetail } from './entities/payroll-item-detail.entity';
+import { Payslip } from './entities/payslip.entity';
+import { SeveranceCalculation } from './entities/severance-calculation.entity';
+import { CalculateSeveranceDto } from './dto/calculate-severance.dto';
 import { SalaryComponentType } from './entities/salary-component.entity';
 import { GeneratePayrollDto } from './dto/generate-payroll.dto';
 import { CreateSalaryComponentDto } from './dto/create-salary-component.dto';
@@ -29,7 +42,7 @@ import { ILeaveRepository } from '../leave/leave-repository.interface';
 import { TRANSACTION_RUNNER, TransactionRunner } from '../../database/transaction-runner';
 import { AuditLogService } from '../../common/services/audit-log.service';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
-import { toDecimalString } from '../../common/utils/currency.util';
+import { parseDecimal, toDecimalString } from '../../common/utils/currency.util';
 
 export interface PayrollPeriodDetail {
   period: PayrollPeriod;
@@ -56,6 +69,9 @@ export class PayrollService {
     @Inject(TRANSACTION_RUNNER) private readonly transactionRunner: TransactionRunner,
     private readonly calculatorFactory: PayrollCalculatorFactory,
     private readonly thrCalculator: ThrCalculator,
+    private readonly payslipPdfGenerator: PayslipPdfGenerator,
+    private readonly severanceCalculator: SeveranceCalculator,
+    private readonly pph21AnnualReconciliationCalculator: Pph21AnnualReconciliationCalculator,
     private readonly auditLogService: AuditLogService,
     private readonly eventEmitter: EventEmitter2,
   ) {}
@@ -215,6 +231,39 @@ export class PayrollService {
     return this.thrCalculator.calculate({ monthlySalary, joinDate: employee.joinDate, referenceDate });
   }
 
+  /**
+   * Rekonsiliasi tahunan PPh21 (§6 roadmap Phase 4, "TER tahunan/Desember")
+   * — read-only, TIDAK menulis ke `payroll_items` manapun. HR yang
+   * memutuskan bagaimana menerapkan `decemberAdjustment` (mis. tambahkan
+   * manual ke slip Desember) — sama seperti `calculateThr`, calculator ini
+   * hanya menghitung & mengembalikan angka.
+   */
+  async calculatePph21Reconciliation(
+    employeeId: string,
+    year: number,
+  ): Promise<Pph21AnnualReconciliationResult> {
+    const employee = await this.employeeRepository.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException('Karyawan tidak ditemukan');
+    }
+
+    const items = await this.payrollRepository.findItemsByEmployeeAndYear(employeeId, year);
+    const annualGrossIncome = items.reduce((sum, item) => sum + parseDecimal(item.grossSalary), 0);
+    const totalPph21Withheld = items.reduce((sum, item) => sum + parseDecimal(item.pph21Amount), 0);
+
+    const ptkpStatus = resolvePtkpStatus(employee);
+    const ptkpSetting = await this.payrollRepository.findPtkpSetting(ptkpStatus, year);
+    if (!ptkpSetting) {
+      throw new NotFoundException(`Setting PTKP untuk status ${ptkpStatus} tahun ${year} belum dikonfigurasi`);
+    }
+
+    return this.pph21AnnualReconciliationCalculator.calculate({
+      annualGrossIncome,
+      ptkpAnnualAmount: parseDecimal(ptkpSetting.annualAmount),
+      totalPph21Withheld,
+    });
+  }
+
   async findDetail(periodId: string): Promise<PayrollPeriodDetail> {
     const period = await this.payrollRepository.findPeriodById(periodId);
     if (!period) {
@@ -227,6 +276,81 @@ export class PayrollService {
     );
 
     return { period, items: itemsWithDetails };
+  }
+
+  /**
+   * Slip gaji PDF (§5.5 `payslips`) — idempotent: jika sudah pernah
+   * digenerate untuk `payrollItemId` ini, kembalikan yang sudah ada
+   * (checklist §4 "Idempotency"), jangan render/simpan file baru.
+   */
+  async generatePayslip(payrollItemId: string): Promise<Payslip> {
+    const existing = await this.payrollRepository.findPayslipByPayrollItem(payrollItemId);
+    if (existing) {
+      return existing;
+    }
+
+    const item = await this.payrollRepository.findItemById(payrollItemId);
+    if (!item) {
+      throw new NotFoundException('Payroll item tidak ditemukan');
+    }
+    const details = await this.payrollRepository.findItemDetails(payrollItemId);
+
+    const pdfBuffer = await this.payslipPdfGenerator.generate(item, details);
+    const storedFilename = `${randomUUID()}.pdf`;
+    await writeFile(join(PAYSLIPS_UPLOAD_DIR, storedFilename), pdfBuffer);
+
+    return this.payrollRepository.createPayslip({
+      payrollItemId,
+      fileUrl: storedFilename,
+      generatedAt: new Date(),
+    });
+  }
+
+  /**
+   * Pesangon/PHK (§5.5 `severance_calculations`, PP 35/2021). `dto.reason`
+   * murni catatan audit — multiplier UP/UPMK WAJIB diisi caller (HR/legal)
+   * sesuai alasan PHK sebenarnya (lihat catatan di `SeveranceCalculator`).
+   * Append-only: setiap panggilan membuat baris baru (riwayat), TIDAK
+   * idempotent seperti `generatePayslip` — beda perhitungan bisa terjadi
+   * jika input (mis. gaji, multiplier) berubah antar panggilan.
+   */
+  async calculateSeverance(dto: CalculateSeveranceDto): Promise<SeveranceCalculation> {
+    const employee = await this.employeeRepository.findById(dto.employeeId);
+    if (!employee) {
+      throw new NotFoundException('Karyawan tidak ditemukan');
+    }
+
+    const salaryStructures = await this.payrollRepository.findActiveSalaryStructures(
+      dto.employeeId,
+      dto.terminationDate,
+    );
+    const monthlySalary = salaryStructures
+      .filter((s) => s.salaryComponent.type === SalaryComponentType.EARNING && s.salaryComponent.isFixed)
+      .reduce((sum, s) => sum + Number(s.amount), 0);
+
+    const result = this.severanceCalculator.calculate({
+      monthlySalary,
+      joinDate: employee.joinDate,
+      terminationDate: dto.terminationDate,
+      severancePayMultiplier: dto.severancePayMultiplier,
+      serviceAppreciationMultiplier: dto.serviceAppreciationMultiplier,
+      compensationPay: dto.compensationPay,
+    });
+
+    return this.payrollRepository.createSeveranceCalculation({
+      employeeId: dto.employeeId,
+      terminationDate: dto.terminationDate,
+      reason: dto.reason,
+      yearsOfService: result.yearsOfService.toFixed(2),
+      severancePay: toDecimalString(result.severancePay),
+      serviceAppreciationPay: toDecimalString(result.serviceAppreciationPay),
+      compensationPay: toDecimalString(result.compensationPay),
+      calculatedAt: new Date(),
+    });
+  }
+
+  findSeveranceCalculations(employeeId: string): Promise<SeveranceCalculation[]> {
+    return this.payrollRepository.findSeveranceCalculationsByEmployee(employeeId);
   }
 
   /**

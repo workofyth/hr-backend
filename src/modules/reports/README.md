@@ -1,7 +1,7 @@
 # Reports Module
 
 Laporan ringkasan (roadmap Phase 5): attendance summary, leave summary,
-payroll summary.
+payroll summary, headcount summary.
 
 ## Dependency
 
@@ -32,12 +32,16 @@ untuk attendance & leave supaya menembak composite index
 |---|---|
 | `GET /reports/attendance-summary`, `/leave-summary` | SUPER_ADMIN, HR_ADMIN, MANAGER |
 | `GET /reports/payroll-summary` | SUPER_ADMIN, HR_ADMIN, FINANCE |
+| `GET /reports/headcount-summary?companyId=` | SUPER_ADMIN, HR_ADMIN, MANAGER, FINANCE |
 
 ## Catatan
 
-- Dashboard HR/Finance (headcount, turnover, grafik tren), export
-  Excel/PDF, dan laporan e-Bupot/BPJS (roadmap Phase 5) BELUM termasuk di
-  sini — modul ini dibatasi ke 3 laporan ringkasan yang sudah diminta.
+- `getHeadcountSummary` adalah snapshot SEKARANG saja (jumlah per
+  status/jenis kontrak/departemen/cabang) — turnover/tren dari waktu ke
+  waktu butuh pencatatan time-series yang belum ada di skema §5.5, BELUM
+  diimplementasikan (jangan dipalsukan dengan data statis).
+- Export Excel/PDF dan laporan e-Bupot/BPJS (roadmap Phase 5) BELUM
+  termasuk di sini — modul ini dibatasi ke 4 laporan yang sudah diminta.
 - Untuk company yang jauh lebih besar dari yang ditargetkan roadmap ini,
   query per-karyawan bisa jadi bottleneck — solusinya adalah tabel
   agregat/materialized view, di luar skema §5.5 saat ini sehingga belum

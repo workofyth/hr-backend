@@ -6,6 +6,8 @@ import { BpjsSetting } from './bpjs-setting.entity';
 import { PayrollPeriod } from './payroll-period.entity';
 import { PayrollItem } from './payroll-item.entity';
 import { PayrollItemDetail } from './payroll-item-detail.entity';
+import { Payslip } from './payslip.entity';
+import { SeveranceCalculation } from './severance-calculation.entity';
 
 export {
   SalaryComponent,
@@ -16,6 +18,8 @@ export {
   PayrollPeriod,
   PayrollItem,
   PayrollItemDetail,
+  Payslip,
+  SeveranceCalculation,
 };
 
 export const payrollEntities = [
@@ -27,4 +31,6 @@ export const payrollEntities = [
   PayrollPeriod,
   PayrollItem,
   PayrollItemDetail,
+  Payslip,
+  SeveranceCalculation,
 ];

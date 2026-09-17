@@ -1,7 +1,8 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PAYROLL_REPOSITORY } from '../payroll.constants';
 import { IPayrollRepository } from '../payroll-repository.interface';
-import { Employee, MaritalStatus } from '../../employee/entities/employee.entity';
+import { Employee } from '../../employee/entities/employee.entity';
+import { resolvePtkpStatus } from '../utils/ptkp-status.util';
 import { parseDecimal, roundToRupiah } from '../../../common/utils/currency.util';
 
 export interface Pph21CalculationInput {
@@ -22,8 +23,6 @@ export interface Pph21CalculationResult {
 export interface ITaxCalculator {
   calculate(input: Pph21CalculationInput): Promise<Pph21CalculationResult>;
 }
-
-const MAX_PTKP_DEPENDENTS = 3;
 
 /**
  * Pemetaan status PTKP -> kategori TER (PMK 168/2023 Lampiran I). Ini
@@ -51,15 +50,15 @@ const PTKP_TO_TER_CATEGORY: Record<string, string> = {
  * memperhitungkan PTKP di dalam tarifnya sendiri — PPh21 bulanan dihitung
  * langsung `terRate x grossMonthlyIncome`, TIDAK mengurangi PTKP/biaya
  * jabatan secara manual (itu perhitungan metode lama, sebelum TER).
- * Rekonsiliasi tahunan (Desember, metode progresif) belum diimplementasikan
- * pada fase ini — di luar permintaan tugas ini.
+ * Rekonsiliasi tahunan (Desember, metode progresif) — lihat
+ * `Pph21AnnualReconciliationCalculator`.
  */
 @Injectable()
 export class Pph21Calculator implements ITaxCalculator {
   constructor(@Inject(PAYROLL_REPOSITORY) private readonly payrollRepository: IPayrollRepository) {}
 
   async calculate(input: Pph21CalculationInput): Promise<Pph21CalculationResult> {
-    const ptkpStatus = this.resolvePtkpStatus(input.employee);
+    const ptkpStatus = resolvePtkpStatus(input.employee);
 
     const ptkpSetting = await this.payrollRepository.findPtkpSetting(ptkpStatus, input.effectiveYear);
     if (!ptkpSetting) {
@@ -87,11 +86,5 @@ export class Pph21Calculator implements ITaxCalculator {
       terRate,
       pph21Amount: roundToRupiah(input.grossMonthlyIncome * terRate),
     };
-  }
-
-  private resolvePtkpStatus(employee: Employee): string {
-    const dependents = Math.min(Math.max(employee.dependentsCount, 0), MAX_PTKP_DEPENDENTS);
-    const maritalPrefix = employee.maritalStatus === MaritalStatus.K ? 'K' : 'TK';
-    return `${maritalPrefix}${dependents}`;
   }
 }

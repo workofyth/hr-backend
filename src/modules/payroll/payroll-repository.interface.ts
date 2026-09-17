@@ -7,6 +7,8 @@ import { TaxTerRate } from './entities/tax-ter-rate.entity';
 import { PayrollPeriod } from './entities/payroll-period.entity';
 import { PayrollItem } from './entities/payroll-item.entity';
 import { PayrollItemDetail } from './entities/payroll-item-detail.entity';
+import { Payslip } from './entities/payslip.entity';
+import { SeveranceCalculation } from './entities/severance-calculation.entity';
 
 /**
  * Repository Pattern — backend-architecture-hr.md §3: PayrollService &
@@ -66,8 +68,28 @@ export interface IPayrollRepository {
   updatePeriod(id: string, data: DeepPartial<PayrollPeriod>, manager?: EntityManager): Promise<PayrollPeriod>;
 
   findItemsByPeriod(periodId: string): Promise<PayrollItem[]>;
+  /** Satu payroll_item + relasi `employee`/`payrollPeriod` — dipakai `generatePayslip` untuk header slip. */
+  findItemById(id: string): Promise<PayrollItem | null>;
+  /**
+   * Seluruh payroll_items satu karyawan sepanjang satu `periodYear`
+   * (lintas periode/bulan) — dipakai rekonsiliasi tahunan PPh21
+   * (`PayrollService.calculatePph21Reconciliation`).
+   */
+  findItemsByEmployeeAndYear(employeeId: string, periodYear: number): Promise<PayrollItem[]>;
   createItem(data: DeepPartial<PayrollItem>, manager?: EntityManager): Promise<PayrollItem>;
 
   findItemDetails(payrollItemId: string): Promise<PayrollItemDetail[]>;
   createItemDetail(data: DeepPartial<PayrollItemDetail>, manager?: EntityManager): Promise<PayrollItemDetail>;
+
+  /**
+   * Satu slip per payroll_item (UNIQUE `payroll_item_id`) — dipakai
+   * `PayrollService.generatePayslip` untuk idempotency: jika sudah pernah
+   * digenerate, kembalikan yang sudah ada, jangan generate ulang.
+   */
+  findPayslipByPayrollItem(payrollItemId: string): Promise<Payslip | null>;
+  createPayslip(data: DeepPartial<Payslip>): Promise<Payslip>;
+
+  /** Riwayat perhitungan pesangon satu karyawan, terbaru dulu (append-only, §5.5). */
+  findSeveranceCalculationsByEmployee(employeeId: string): Promise<SeveranceCalculation[]>;
+  createSeveranceCalculation(data: DeepPartial<SeveranceCalculation>): Promise<SeveranceCalculation>;
 }

@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { IEmployeeRepository } from '../employee/employee-repository.interface';
-import { Employee } from '../employee/entities/employee.entity';
+import { Employee, EmployeeStatus, EmploymentType } from '../employee/entities/employee.entity';
 import { IAttendanceRepository, AttendanceStatusCounts } from '../attendance/attendance-repository.interface';
 import { AttendanceStatus } from '../attendance/entities/attendance.entity';
 import { ILeaveRepository } from '../leave/leave-repository.interface';
@@ -36,6 +36,7 @@ describe('ReportsService', () => {
       findByEmployeeCode: jest.fn(),
       findFirstByCompanyAndRole: jest.fn(),
       findActiveByCompany: jest.fn(),
+      findAllByCompany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       softDelete: jest.fn(),
@@ -96,9 +97,15 @@ describe('ReportsService', () => {
       createPeriod: jest.fn(),
       updatePeriod: jest.fn(),
       findItemsByPeriod: jest.fn(),
+      findItemById: jest.fn(),
+      findItemsByEmployeeAndYear: jest.fn(),
       createItem: jest.fn(),
       findItemDetails: jest.fn(),
       createItemDetail: jest.fn(),
+      findPayslipByPayrollItem: jest.fn(),
+      createPayslip: jest.fn(),
+      findSeveranceCalculationsByEmployee: jest.fn(),
+      createSeveranceCalculation: jest.fn(),
     };
 
     service = new ReportsService(employeeRepository, attendanceRepository, leaveRepository, payrollRepository);
@@ -235,6 +242,59 @@ describe('ReportsService', () => {
         service.getPayrollSummary({ companyId: 'company-1', periodMonth: 6, periodYear: 2026 }),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(payrollRepository.findItemsByPeriod).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getHeadcountSummary', () => {
+    it('menghitung distribusi status/jenis kontrak/departemen/cabang dari snapshot karyawan sekarang', async () => {
+      employeeRepository.findAllByCompany.mockResolvedValue([
+        {
+          status: EmployeeStatus.ACTIVE,
+          employmentType: EmploymentType.PKWTT,
+          department: { name: 'Operasional' },
+          branch: { name: 'Cabang Jakarta' },
+        } as unknown as Employee,
+        {
+          status: EmployeeStatus.ACTIVE,
+          employmentType: EmploymentType.PKWT,
+          department: { name: 'Operasional' },
+          branch: { name: 'Cabang Jakarta' },
+        } as unknown as Employee,
+        {
+          status: EmployeeStatus.RESIGNED,
+          employmentType: EmploymentType.PKWTT,
+          department: undefined,
+          branch: { name: 'Cabang Bandung' },
+        } as unknown as Employee,
+      ]);
+
+      const result = await service.getHeadcountSummary({ companyId: 'company-1' });
+
+      expect(employeeRepository.findAllByCompany).toHaveBeenCalledWith('company-1');
+      expect(result.total).toBe(3);
+      expect(result.byStatus).toEqual({
+        [EmployeeStatus.ACTIVE]: 2,
+        [EmployeeStatus.INACTIVE]: 0,
+        [EmployeeStatus.RESIGNED]: 1,
+      });
+      expect(result.byEmploymentType).toEqual({
+        [EmploymentType.PKWTT]: 2,
+        [EmploymentType.PKWT]: 1,
+        [EmploymentType.HARIAN]: 0,
+        [EmploymentType.MAGANG]: 0,
+      });
+      expect(result.byDepartment).toEqual(
+        expect.arrayContaining([
+          { name: 'Operasional', count: 2 },
+          { name: 'Tanpa Departemen', count: 1 },
+        ]),
+      );
+      expect(result.byBranch).toEqual(
+        expect.arrayContaining([
+          { name: 'Cabang Jakarta', count: 2 },
+          { name: 'Cabang Bandung', count: 1 },
+        ]),
+      );
     });
   });
 });

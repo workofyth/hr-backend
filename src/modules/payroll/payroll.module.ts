@@ -16,6 +16,9 @@ import { ThrCalculator } from './calculators/thr.calculator';
 import { MonthlySalaryPayrollCalculator } from './calculators/monthly-salary-payroll.calculator';
 import { DailyWagePayrollCalculator } from './calculators/daily-wage-payroll.calculator';
 import { PayrollCalculatorFactory } from './calculators/payroll-calculator.factory';
+import { SeveranceCalculator } from './calculators/severance.calculator';
+import { Pph21AnnualReconciliationCalculator } from './calculators/pph21-annual-reconciliation.calculator';
+import { PayslipPdfGenerator } from './payslip-pdf.generator';
 import { AuditLogService } from '../../common/services/audit-log.service';
 import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/transaction-runner';
 
@@ -25,7 +28,6 @@ import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/tra
     // EMPLOYEE_REPOSITORY: daftar employee aktif per company + data PTKP
     // (maritalStatus/dependentsCount/joinDate/resignDate/employmentType).
     EmployeeModule,
-    // ATTENDANCE_REPOSITORY: potongan alpha (hari tanpa attendance).
     // OVERTIME_REQUEST_REPOSITORY: jam lembur — hanya overtime_requests
     // berstatus APPROVED (lihat PayrollService.computeOvertimeHours).
     AttendanceModule,
@@ -42,6 +44,9 @@ import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/tra
     MonthlySalaryPayrollCalculator,
     DailyWagePayrollCalculator,
     PayrollCalculatorFactory,
+    PayslipPdfGenerator,
+    SeveranceCalculator,
+    Pph21AnnualReconciliationCalculator,
     AuditLogService,
     { provide: PAYROLL_REPOSITORY, useClass: PayrollRepository },
     { provide: TRANSACTION_RUNNER, useClass: TypeOrmTransactionRunner },

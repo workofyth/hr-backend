@@ -14,6 +14,9 @@ berjenjang (atasan → HR), auto-update saldo, dan integrasi status
 - **Event yang dipancarkan**: `leave.approved`, `leave.cancelled` —
   didengarkan `AttendanceModule` (lihat README-nya) untuk menandai/
   membatalkan `ON_LEAVE`, TANPA modul ini meng-import `AttendanceModule`.
+  `leave.rejected` — didengarkan `NotificationModule` untuk memberitahu
+  karyawan pengaju (payload sudah bawa `userId` langsung, lihat
+  `LeaveRejectedEvent`).
 
 ## Pattern
 

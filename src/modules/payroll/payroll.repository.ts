@@ -9,6 +9,8 @@ import { TaxTerRate } from './entities/tax-ter-rate.entity';
 import { PayrollPeriod } from './entities/payroll-period.entity';
 import { PayrollItem } from './entities/payroll-item.entity';
 import { PayrollItemDetail } from './entities/payroll-item-detail.entity';
+import { Payslip } from './entities/payslip.entity';
+import { SeveranceCalculation } from './entities/severance-calculation.entity';
 import { IPayrollRepository } from './payroll-repository.interface';
 
 /**
@@ -27,6 +29,9 @@ export class PayrollRepository implements IPayrollRepository {
     @InjectRepository(PayrollPeriod) private readonly periodRepository: Repository<PayrollPeriod>,
     @InjectRepository(PayrollItem) private readonly itemRepository: Repository<PayrollItem>,
     @InjectRepository(PayrollItemDetail) private readonly itemDetailRepository: Repository<PayrollItemDetail>,
+    @InjectRepository(Payslip) private readonly payslipRepository: Repository<Payslip>,
+    @InjectRepository(SeveranceCalculation)
+    private readonly severanceCalculationRepository: Repository<SeveranceCalculation>,
   ) {}
 
   findSalaryComponents(companyId: string): Promise<SalaryComponent[]> {
@@ -176,6 +181,20 @@ export class PayrollRepository implements IPayrollRepository {
     });
   }
 
+  findItemById(id: string): Promise<PayrollItem | null> {
+    return this.itemRepository.findOne({ where: { id }, relations: ['employee', 'payrollPeriod'] });
+  }
+
+  findItemsByEmployeeAndYear(employeeId: string, periodYear: number): Promise<PayrollItem[]> {
+    return this.itemRepository
+      .createQueryBuilder('item')
+      .innerJoin('item.payrollPeriod', 'period')
+      .where('item.employee_id = :employeeId', { employeeId })
+      .andWhere('period.period_year = :periodYear', { periodYear })
+      .orderBy('period.period_month', 'ASC')
+      .getMany();
+  }
+
   createItem(data: DeepPartial<PayrollItem>, manager?: EntityManager): Promise<PayrollItem> {
     const repository = manager ? manager.getRepository(PayrollItem) : this.itemRepository;
     const item = repository.create(data);
@@ -190,5 +209,26 @@ export class PayrollRepository implements IPayrollRepository {
     const repository = manager ? manager.getRepository(PayrollItemDetail) : this.itemDetailRepository;
     const detail = repository.create(data);
     return repository.save(detail);
+  }
+
+  findPayslipByPayrollItem(payrollItemId: string): Promise<Payslip | null> {
+    return this.payslipRepository.findOne({ where: { payrollItemId } });
+  }
+
+  createPayslip(data: DeepPartial<Payslip>): Promise<Payslip> {
+    const payslip = this.payslipRepository.create(data);
+    return this.payslipRepository.save(payslip);
+  }
+
+  findSeveranceCalculationsByEmployee(employeeId: string): Promise<SeveranceCalculation[]> {
+    return this.severanceCalculationRepository.find({
+      where: { employeeId },
+      order: { calculatedAt: 'DESC' },
+    });
+  }
+
+  createSeveranceCalculation(data: DeepPartial<SeveranceCalculation>): Promise<SeveranceCalculation> {
+    const calculation = this.severanceCalculationRepository.create(data);
+    return this.severanceCalculationRepository.save(calculation);
   }
 }

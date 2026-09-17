@@ -1,5 +1,11 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+
+// generatePayslip() menulis file PDF ke disk lewat fs/promises.writeFile —
+// di-mock supaya test tidak menyentuh disk sungguhan.
+jest.mock('fs/promises', () => ({ writeFile: jest.fn().mockResolvedValue(undefined) }));
+
+import * as fsPromises from 'fs/promises';
 import { PayrollService } from './payroll.service';
 import { IPayrollRepository } from './payroll-repository.interface';
 import { PayrollCalculatorFactory } from './calculators/payroll-calculator.factory';
@@ -9,12 +15,16 @@ import { OvertimeCalculator } from './calculators/overtime.calculator';
 import { BpjsCalculator } from './calculators/bpjs.calculator';
 import { Pph21Calculator } from './calculators/pph21.calculator';
 import { ThrCalculator } from './calculators/thr.calculator';
+import { SeveranceCalculator } from './calculators/severance.calculator';
+import { Pph21AnnualReconciliationCalculator } from './calculators/pph21-annual-reconciliation.calculator';
+import { PayslipPdfGenerator } from './payslip-pdf.generator';
 import { PayrollPeriod, PayrollPeriodStatus } from './entities/payroll-period.entity';
 import { PayrollItem } from './entities/payroll-item.entity';
 import { BpjsSetting, BpjsType } from './entities/bpjs-setting.entity';
 import { TaxPtkpSetting } from './entities/tax-ptkp-setting.entity';
 import { TaxTerRate } from './entities/tax-ter-rate.entity';
 import { EmployeeSalaryStructure } from './entities/employee-salary-structure.entity';
+import { SeveranceCalculation } from './entities/severance-calculation.entity';
 import { IEmployeeRepository } from '../employee/employee-repository.interface';
 import { Employee, EmploymentType, MaritalStatus } from '../employee/entities/employee.entity';
 import { IOvertimeRequestRepository } from '../attendance/overtime-request-repository.interface';
@@ -33,6 +43,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
   let transactionRunner: TransactionRunner;
   let eventEmitter: jest.Mocked<EventEmitter2>;
   let auditLogService: jest.Mocked<AuditLogService>;
+  let payslipPdfGenerator: jest.Mocked<PayslipPdfGenerator>;
 
   // Periode Juni 2026: 30 hari kalender, 4 hari Minggu -> 26 hari kerja
   // (dihitung ulang & diverifikasi manual via kalender sungguhan).
@@ -99,9 +110,15 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
         Promise.resolve({ id, ...data } as PayrollPeriod),
       ),
       findItemsByPeriod: jest.fn(),
+      findItemById: jest.fn(),
+      findItemsByEmployeeAndYear: jest.fn(),
       createItem: jest.fn().mockImplementation((data) => Promise.resolve({ id: 'item-1', ...data } as PayrollItem)),
       findItemDetails: jest.fn(),
       createItemDetail: jest.fn().mockResolvedValue({}),
+      findPayslipByPayrollItem: jest.fn(),
+      createPayslip: jest.fn(),
+      findSeveranceCalculationsByEmployee: jest.fn(),
+      createSeveranceCalculation: jest.fn(),
     };
 
     employeeRepository = {
@@ -111,6 +128,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       findByEmployeeCode: jest.fn(),
       findFirstByCompanyAndRole: jest.fn(),
       findActiveByCompany: jest.fn().mockResolvedValue([makeEmployee()]),
+      findAllByCompany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       softDelete: jest.fn(),
@@ -157,6 +175,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
     const calculatorFactory = new PayrollCalculatorFactory(monthlyCalculator, dailyCalculator);
     const thrCalculator = new ThrCalculator();
     auditLogService = { record: jest.fn() } as unknown as jest.Mocked<AuditLogService>;
+    payslipPdfGenerator = { generate: jest.fn() } as unknown as jest.Mocked<PayslipPdfGenerator>;
 
     service = new PayrollService(
       payrollRepository,
@@ -166,6 +185,9 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       transactionRunner,
       calculatorFactory,
       thrCalculator,
+      payslipPdfGenerator,
+      new SeveranceCalculator(),
+      new Pph21AnnualReconciliationCalculator(),
       auditLogService,
       eventEmitter,
     );
@@ -422,6 +444,167 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
 
       expect(payrollRepository.findPeriods).toHaveBeenCalledWith('company-1', 2, 10);
       expect(result).toEqual({ items: [{ id: 'period-1' }], total: 1, page: 2, limit: 10 });
+    });
+  });
+
+  describe('generatePayslip', () => {
+    beforeEach(() => {
+      (fsPromises.writeFile as jest.Mock).mockClear();
+    });
+
+    it('mengembalikan payslip yang sudah ada tanpa generate ulang (idempotency)', async () => {
+      const existingPayslip = { id: 'payslip-1', payrollItemId: 'item-1' };
+      payrollRepository.findPayslipByPayrollItem.mockResolvedValue(existingPayslip as never);
+
+      const result = await service.generatePayslip('item-1');
+
+      expect(result).toBe(existingPayslip);
+      expect(payrollRepository.findItemById).not.toHaveBeenCalled();
+      expect(payslipPdfGenerator.generate).not.toHaveBeenCalled();
+      expect(fsPromises.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('men-generate PDF, menyimpannya ke disk, lalu mencatat baris payslips baru', async () => {
+      payrollRepository.findPayslipByPayrollItem.mockResolvedValue(null);
+      payrollRepository.findItemById.mockResolvedValue({ id: 'item-1' } as PayrollItem);
+      payrollRepository.findItemDetails.mockResolvedValue([]);
+      payslipPdfGenerator.generate.mockResolvedValue(Buffer.from('%PDF-fake'));
+      payrollRepository.createPayslip.mockResolvedValue({ id: 'payslip-new', payrollItemId: 'item-1' } as never);
+
+      const result = await service.generatePayslip('item-1');
+
+      expect(payslipPdfGenerator.generate).toHaveBeenCalledWith({ id: 'item-1' }, []);
+      expect(fsPromises.writeFile).toHaveBeenCalledWith(
+        expect.stringContaining('.pdf'),
+        Buffer.from('%PDF-fake'),
+      );
+      expect(payrollRepository.createPayslip).toHaveBeenCalledWith(
+        expect.objectContaining({ payrollItemId: 'item-1', fileUrl: expect.stringContaining('.pdf') }),
+      );
+      expect((result as { id: string }).id).toBe('payslip-new');
+    });
+
+    it('melempar NotFoundException jika payroll item tidak ditemukan', async () => {
+      payrollRepository.findPayslipByPayrollItem.mockResolvedValue(null);
+      payrollRepository.findItemById.mockResolvedValue(null);
+
+      await expect(service.generatePayslip('unknown-item')).rejects.toBeInstanceOf(NotFoundException);
+      expect(payslipPdfGenerator.generate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('calculateSeverance', () => {
+    it('menghitung UP/UPMK dari gaji tetap aktif & masa kerja, lalu menyimpan baris baru', async () => {
+      employeeRepository.findById.mockResolvedValue({
+        id: 'employee-1',
+        joinDate: '2021-06-01',
+      } as Employee);
+      payrollRepository.findActiveSalaryStructures.mockResolvedValue([
+        { amount: '4500000.00', salaryComponent: { type: 'EARNING', isFixed: true } } as unknown as EmployeeSalaryStructure,
+        { amount: '500000.00', salaryComponent: { type: 'EARNING', isFixed: true } } as unknown as EmployeeSalaryStructure,
+        // Bukan fixed -> tidak ikut dihitung sebagai "upah" untuk pesangon.
+        { amount: '200000.00', salaryComponent: { type: 'EARNING', isFixed: false } } as unknown as EmployeeSalaryStructure,
+      ]);
+      payrollRepository.createSeveranceCalculation.mockImplementation((data) =>
+        Promise.resolve({ id: 'severance-1', ...data } as never),
+      );
+
+      const result = await service.calculateSeverance({
+        employeeId: 'employee-1',
+        terminationDate: '2026-06-01', // 5 tahun sejak join -> UP dasar 6 bulan, UPMK dasar 2 bulan
+        reason: 'Efisiensi - perusahaan tutup karena rugi',
+        severancePayMultiplier: 0.5,
+        serviceAppreciationMultiplier: 1,
+        compensationPay: 1_000_000,
+      });
+
+      // upah = 4.500.000 + 500.000 = 5.000.000 (200.000 non-fixed dikecualikan)
+      // UP = 6 x 5.000.000 x 0.5 = 15.000.000; UPMK = 2 x 5.000.000 x 1 = 10.000.000
+      expect(payrollRepository.createSeveranceCalculation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          employeeId: 'employee-1',
+          reason: 'Efisiensi - perusahaan tutup karena rugi',
+          yearsOfService: '5.00',
+          severancePay: '15000000.00',
+          serviceAppreciationPay: '10000000.00',
+          compensationPay: '1000000.00',
+        }),
+      );
+      expect((result as unknown as { id: string }).id).toBe('severance-1');
+    });
+
+    it('melempar NotFoundException jika karyawan tidak ditemukan', async () => {
+      employeeRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.calculateSeverance({
+          employeeId: 'unknown',
+          terminationDate: '2026-06-01',
+          reason: 'Efisiensi',
+          severancePayMultiplier: 1,
+          serviceAppreciationMultiplier: 1,
+          compensationPay: 0,
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(payrollRepository.createSeveranceCalculation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findSeveranceCalculations', () => {
+    it('meneruskan employeeId ke repository', async () => {
+      const history = [{ id: 'severance-1' }] as unknown as SeveranceCalculation[];
+      payrollRepository.findSeveranceCalculationsByEmployee.mockResolvedValue(history);
+
+      const result = await service.findSeveranceCalculations('employee-1');
+
+      expect(payrollRepository.findSeveranceCalculationsByEmployee).toHaveBeenCalledWith('employee-1');
+      expect(result).toBe(history);
+    });
+  });
+
+  describe('calculatePph21Reconciliation', () => {
+    it('menjumlahkan gross/PPh21 seluruh payroll_items setahun & membandingkan dengan tarif progresif', async () => {
+      employeeRepository.findById.mockResolvedValue({
+        id: 'employee-1',
+        maritalStatus: MaritalStatus.TK,
+        dependentsCount: 0,
+      } as Employee);
+      payrollRepository.findItemsByEmployeeAndYear.mockResolvedValue([
+        { grossSalary: '150000000.00', pph21Amount: '15000000.00' } as unknown as PayrollItem,
+        { grossSalary: '156000000.00', pph21Amount: '15600000.00' } as unknown as PayrollItem,
+      ]);
+      payrollRepository.findPtkpSetting.mockResolvedValue({ annualAmount: '0.00' } as TaxPtkpSetting);
+
+      const result = await service.calculatePph21Reconciliation('employee-1', 2026);
+
+      expect(payrollRepository.findItemsByEmployeeAndYear).toHaveBeenCalledWith('employee-1', 2026);
+      expect(payrollRepository.findPtkpSetting).toHaveBeenCalledWith('TK0', 2026);
+      // gross total = 306.000.000, PTKP=0, biaya jabatan kena cap 6jt -> PKP=300jt -> pajak=44jt
+      expect(result.taxableIncome).toBe(300_000_000);
+      expect(result.totalAnnualTaxDue).toBe(44_000_000);
+      expect(result.totalWithheld).toBe(30_600_000);
+      expect(result.decemberAdjustment).toBe(44_000_000 - 30_600_000);
+    });
+
+    it('melempar NotFoundException jika karyawan tidak ditemukan', async () => {
+      employeeRepository.findById.mockResolvedValue(null);
+
+      await expect(service.calculatePph21Reconciliation('unknown', 2026)).rejects.toBeInstanceOf(NotFoundException);
+      expect(payrollRepository.findItemsByEmployeeAndYear).not.toHaveBeenCalled();
+    });
+
+    it('melempar NotFoundException jika setting PTKP untuk status/tahun tersebut belum ada', async () => {
+      employeeRepository.findById.mockResolvedValue({
+        id: 'employee-1',
+        maritalStatus: MaritalStatus.TK,
+        dependentsCount: 0,
+      } as Employee);
+      payrollRepository.findItemsByEmployeeAndYear.mockResolvedValue([]);
+      payrollRepository.findPtkpSetting.mockResolvedValue(null);
+
+      await expect(service.calculatePph21Reconciliation('employee-1', 2026)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 

@@ -1,32 +1,49 @@
 # Notification Module
 
-Notifikasi in-app (§5.6 `notifications`). Saat ini hanya mendengarkan
-event `attendance.checked_in` dan menyimpan baris notifikasi — belum ada
-pengiriman lewat channel eksternal (push/email).
+Notifikasi in-app (§5.6 `notifications`). Mendengarkan `attendance.checked_in`,
+`leave.rejected`, dan `payroll.generated`, lalu menyimpan baris notifikasi —
+belum ada pengiriman lewat channel eksternal (push/email).
 
 ## Dependency
 
-- **Tidak meng-import modul lain** — hanya bergantung pada nama event
-  (`ATTENDANCE_CHECKED_IN_EVENT`) & tipe payload (`AttendanceCheckedInEvent`)
-  yang diekspor `AttendanceModule`, tanpa meng-import module-nya (Observer
-  Pattern, decoupled — lihat §3 & §6).
+- **Impor**: `EmployeeModule` (`EMPLOYEE_REPOSITORY` — resolve `employeeId`
+  ke `userId` untuk event `payroll.generated`, yang hanya bawa
+  `payrollPeriodId`/`payrollItemIds`) dan `PayrollModule`
+  (`PAYROLL_REPOSITORY` — ambil daftar `payroll_items` satu periode).
+  Event `attendance.checked_in`/`leave.rejected` sudah bawa `userId`
+  langsung di payload-nya, tidak butuh modul lain untuk itu.
+- Bergantung pada nama event & tipe payload yang diekspor
+  `AttendanceModule`/`LeaveModule`/`PayrollModule`, TANPA meng-import
+  module-nya untuk keperluan event itu sendiri (Observer Pattern,
+  decoupled — lihat §3 & §6). Import `EmployeeModule`/`PayrollModule` di
+  atas murni untuk keperluan ENRICHMENT data (resolve userId, ambil daftar
+  item), bukan untuk mendengarkan event.
 - **Tidak mengekspor apa pun.**
 - Tidak punya controller — modul ini murni event listener + penyimpanan
   baris `notifications`, tidak ada endpoint HTTP.
 
 ## Pattern
 
-- Observer/Event-driven: `@OnEvent(ATTENDANCE_CHECKED_IN_EVENT)` di
-  `NotificationService`, best-effort (kegagalan di sini TIDAK boleh
-  menggagalkan proses check-in yang sudah tercatat — di-try/catch +
-  logger, bukan dilempar ulang).
+- Observer/Event-driven: `@OnEvent(...)` per event di `NotificationService`,
+  semua best-effort (kegagalan di sini TIDAK boleh menggagalkan proses
+  yang sudah tercatat di modul penerbit — di-try/catch + logger, bukan
+  dilempar ulang).
 - `channels/push.channel.ts` & `channels/email.channel.ts` — placeholder
   Strategy Pattern untuk provider eksternal (FCM/SMTP), BELUM
   diimplementasikan (menyusul saat integrasi provider tersedia, lihat
   `.env.example`).
 
+## Event yang didengarkan
+
+| Event | Sumber | Isi notifikasi |
+|---|---|---|
+| `attendance.checked_in` | AttendanceModule | Status check-in (tepat waktu/terlambat/dst) |
+| `leave.rejected` | LeaveModule | Rentang tanggal cuti + alasan penolakan (jika ada) |
+| `payroll.generated` | PayrollModule | Satu notifikasi per employee yang punya `payroll_item` pada periode itu |
+
 ## Catatan
 
-- Belum mendengarkan event `leave.approved`/`payroll.generated` (roadmap
-  menyebut "Notifikasi status pengajuan cuti" & kirim slip gaji) —
-  di luar cakupan yang sudah dikerjakan sejauh ini.
+- Belum mendengarkan `leave.approved`/`leave.cancelled` — di luar cakupan
+  yang sudah dikerjakan sejauh ini (bisa ditambah dengan pola yang sama
+  jika dibutuhkan; `LeaveApprovedEvent` hanya bawa `employeeId`, perlu
+  resolve ke `userId` seperti `payroll.generated`).

@@ -38,6 +38,13 @@ export interface IEmployeeRepository {
    * mempersempit scope laporan tanpa menambah method baru.
    */
   findActiveByCompany(companyId: string, branchId?: string, departmentId?: string): Promise<Employee[]>;
+  /**
+   * Semua karyawan satu company TANPA filter status — dipakai
+   * `ReportsService.getHeadcountSummary` (roadmap Phase 5: "Dashboard
+   * headcount") untuk menghitung distribusi status/departemen/cabang/jenis
+   * kontrak, bukan hanya yang ACTIVE.
+   */
+  findAllByCompany(companyId: string): Promise<Employee[]>;
   create(data: DeepPartial<Employee>, manager?: EntityManager): Promise<Employee>;
   update(id: string, data: DeepPartial<Employee>): Promise<Employee>;
   softDelete(id: string): Promise<void>;

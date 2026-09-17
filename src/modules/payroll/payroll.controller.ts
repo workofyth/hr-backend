@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -17,6 +18,10 @@ import { CreateBpjsSettingDto } from './dto/create-bpjs-setting.dto';
 import { CreatePtkpSettingDto } from './dto/create-ptkp-setting.dto';
 import { CreateTerRateDto } from './dto/create-ter-rate.dto';
 import { FindPeriodsQueryDto } from './dto/find-periods-query.dto';
+import { CalculateSeveranceDto } from './dto/calculate-severance.dto';
+import { FindSeveranceCalculationsQueryDto } from './dto/find-severance-calculations-query.dto';
+import { CalculatePph21ReconciliationQueryDto } from './dto/calculate-pph21-reconciliation-query.dto';
+import { PAYSLIPS_UPLOAD_DIR } from './payroll.constants';
 
 /**
  * Hanya menerima request, validasi lewat DTO, dan memanggil PayrollService
@@ -63,6 +68,42 @@ export class PayrollController {
   @Get('thr/:employeeId')
   calculateThr(@Param('employeeId', ParseUUIDPipe) employeeId: string, @Query() query: CalculateThrQueryDto) {
     return this.payrollService.calculateThr(employeeId, query.referenceDate);
+  }
+
+  /**
+   * Rekonsiliasi tahunan PPh21 — read-only, tidak menulis ke payroll_items
+   * manapun (lihat catatan di `PayrollService.calculatePph21Reconciliation`).
+   */
+  @Get('pph21-annual-reconciliation')
+  calculatePph21Reconciliation(@Query() query: CalculatePph21ReconciliationQueryDto) {
+    return this.payrollService.calculatePph21Reconciliation(query.employeeId, query.year);
+  }
+
+  /**
+   * Generate (jika belum ada) & unduh slip gaji PDF satu payroll_item.
+   * Idempotent — panggilan berulang mengembalikan file yang sama, tidak
+   * generate ulang (lihat `PayrollService.generatePayslip`).
+   */
+  @Get('items/:payrollItemId/payslip')
+  async downloadPayslip(@Param('payrollItemId', ParseUUIDPipe) payrollItemId: string, @Res() res: Response) {
+    const payslip = await this.payrollService.generatePayslip(payrollItemId);
+    res.download(`${PAYSLIPS_UPLOAD_DIR}/${payslip.fileUrl}`, 'slip-gaji.pdf');
+  }
+
+  // ---------------------------------------------------------------------
+  // Pesangon/PHK (§5.5, PP 35/2021) — lihat catatan penting soal
+  // multiplier di SeveranceCalculator & CalculateSeveranceDto.
+  // ---------------------------------------------------------------------
+
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN)
+  @Post('severance')
+  calculateSeverance(@Body() dto: CalculateSeveranceDto) {
+    return this.payrollService.calculateSeverance(dto);
+  }
+
+  @Get('severance')
+  findSeveranceCalculations(@Query() query: FindSeveranceCalculationsQueryDto) {
+    return this.payrollService.findSeveranceCalculations(query.employeeId);
   }
 
   // ---------------------------------------------------------------------

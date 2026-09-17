@@ -11,7 +11,7 @@ import { LeaveRequest, LeaveRequestStatus } from './entities/leave-request.entit
 import { LeaveApproval, LeaveApprovalStatus } from './entities/leave-approval.entity';
 import { Employee } from '../employee/entities/employee.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
-import { LEAVE_APPROVED_EVENT, LEAVE_CANCELLED_EVENT } from './leave.constants';
+import { LEAVE_APPROVED_EVENT, LEAVE_CANCELLED_EVENT, LEAVE_REJECTED_EVENT } from './leave.constants';
 import { AuditLogService } from '../../common/services/audit-log.service';
 
 describe('LeaveService', () => {
@@ -58,6 +58,7 @@ describe('LeaveService', () => {
       findByEmployeeCode: jest.fn(),
       findFirstByCompanyAndRole: jest.fn(),
       findActiveByCompany: jest.fn(),
+      findAllByCompany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       softDelete: jest.fn(),
@@ -331,6 +332,7 @@ describe('LeaveService', () => {
       const pendingRequest = {
         id: 'req-1',
         employeeId: 'employee-1',
+        employee: { id: 'employee-1', userId: 'employee-user-1' },
         leaveTypeId: 'leave-type-1',
         leaveType: paidLeaveType,
         startDate: '2026-03-10',
@@ -367,6 +369,15 @@ describe('LeaveService', () => {
       expect(auditLogService.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'REJECT_LEAVE_REQUEST', entityType: 'leave_request', entityId: 'req-1' }),
         undefined,
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        LEAVE_REJECTED_EVENT,
+        expect.objectContaining({
+          leaveRequestId: 'req-1',
+          employeeId: 'employee-1',
+          userId: 'employee-user-1',
+          comment: 'Bertepatan dengan periode tutup buku',
+        }),
       );
       expect(result.status).toBe(LeaveRequestStatus.REJECTED);
     });
