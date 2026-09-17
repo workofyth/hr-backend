@@ -41,6 +41,8 @@ perhitungan THR.
 |---|---|
 | `POST /payroll/generate`, `GET /payroll/:id/detail`, `PUT /payroll/:id/approve` | SUPER_ADMIN, HR_ADMIN, FINANCE |
 | `GET /payroll/thr/:employeeId` | SUPER_ADMIN, HR_ADMIN, FINANCE |
+| `GET /payroll/salary-components`, `GET /payroll/salary-structures`, `GET /payroll/bpjs-settings`, `GET /payroll/ptkp-settings`, `GET /payroll/ter-rates` | SUPER_ADMIN, HR_ADMIN, FINANCE (baca) |
+| `POST` versi endpoint di atas (buat entry baru) | SUPER_ADMIN, HR_ADMIN saja — FINANCE tidak boleh ubah tarif/komponen gaji |
 
 ## Catatan / keterbatasan yang diketahui (lihat juga komentar di kode)
 
@@ -53,6 +55,14 @@ perhitungan THR.
   diimplementasikan — hanya TER bulanan.
 - Slip gaji PDF, export CSV bank, dan laporan e-Bupot/BPJS (roadmap Phase 4
   & 5) belum ada — di luar cakupan yang sudah dikerjakan.
-- **Wajib diisi sebelum dipakai**: `bpjs_settings`, `tax_ptkp_settings`,
-  `tax_ter_rates`, `salary_components`, `employee_salary_structures` —
-  belum ada seeder (lihat `test-plan-hr.md` §2.2).
+- `salary_components`/`employee_salary_structures`/`bpjs_settings`/
+  `tax_ptkp_settings`/`tax_ter_rates` kini punya endpoint create+list
+  (bukan lagi migration/SQL manual — dipakai dashboard `hr-admin-dashboard`
+  halaman "Payroll Settings"). Sengaja **create-only, tidak ada update/
+  delete**: entry lama otomatis ditutup (`endDate`) saat entry baru dibuat
+  untuk `employee_salary_structures`, sesuai checklist §8 dashboard
+  "tidak pernah overwrite data lama". `bpjs_settings`/`tax_ptkp_settings`/
+  `tax_ter_rates` juga create-only by design (histori per tanggal/tahun
+  berlaku) — masih tetap perlu diisi manual pertama kali sebelum payroll
+  bisa digenerate (lihat `test-plan-hr.md` §2.2), tapi sekarang lewat API,
+  bukan SQL.

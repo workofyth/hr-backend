@@ -38,6 +38,7 @@ absensi dengan approval atasan.
 | `POST /attendance/check-in`, `/check-out` | Self-service (semua role login) | Di-throttle 10/menit (Phase 6) |
 | `GET /attendance/history` | Self-service | |
 | `POST /attendance/correction-request` | Self-service | |
+| `GET /attendance/corrections/pending` | SUPER_ADMIN, HR_ADMIN, MANAGER | Antrian approval (admin-dashboard-web-hr.md §5) — MANAGER hanya melihat anak buah langsungnya |
 | `PUT /attendance/corrections/:id/approve`, `/reject` | SUPER_ADMIN, HR_ADMIN, MANAGER (atasan langsung) | |
 
 ## Catatan / keterbatasan yang diketahui

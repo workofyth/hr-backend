@@ -42,4 +42,7 @@ export default () => ({
     ttlMs: parseInt(process.env.THROTTLE_TTL_SECONDS as string, 10) * 1000,
     limit: parseInt(process.env.THROTTLE_LIMIT as string, 10),
   },
+
+  // CORS — origin dashboard web (hr-admin-dashboard), lihat main.ts.
+  corsOrigins: (process.env.CORS_ORIGINS as string).split(',').map((origin) => origin.trim()),
 });

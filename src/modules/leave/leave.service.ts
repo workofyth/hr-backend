@@ -68,6 +68,24 @@ export class LeaveService {
   }
 
   /**
+   * Antrian approval cuti (admin-dashboard-web-hr.md §5) — HR/Super Admin
+   * melihat semua yang actionable, MANAGER hanya yang di-assign ke
+   * dirinya (§3 Chain of Responsibility: approverId level 1 = manager).
+   */
+  async findPendingApprovals(actingUser: AuthenticatedUser): Promise<LeaveApproval[]> {
+    const isHrOrAbove = [UserRole.SUPER_ADMIN, UserRole.HR_ADMIN].includes(actingUser.role);
+    if (isHrOrAbove) {
+      return this.leaveRepository.findActionableApprovals();
+    }
+
+    const actingEmployee = await this.employeeRepository.findByUserId(actingUser.userId);
+    if (!actingEmployee) {
+      throw new NotFoundException('Data karyawan tidak ditemukan untuk akun ini');
+    }
+    return this.leaveRepository.findActionableApprovals(actingEmployee.id);
+  }
+
+  /**
    * Pengajuan cuti (roadmap Phase 3). Validasi saldo hanya berlaku untuk
    * jenis cuti berbayar (`leave_types.is_paid`) — izin unpaid tidak
    * memotong kuota, sesuai catatan roadmap "potongan jika unpaid leave"

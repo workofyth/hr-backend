@@ -21,7 +21,19 @@ describe('BpjsCalculator', () => {
 
   beforeEach(() => {
     payrollRepository = {
+      findSalaryComponents: jest.fn(),
+      createSalaryComponent: jest.fn(),
       findActiveSalaryStructures: jest.fn(),
+      findSalaryStructuresByEmployee: jest.fn(),
+      findOpenSalaryStructure: jest.fn(),
+      createSalaryStructure: jest.fn(),
+      closeSalaryStructure: jest.fn(),
+      findAllBpjsSettings: jest.fn(),
+      createBpjsSetting: jest.fn(),
+      findAllPtkpSettings: jest.fn(),
+      createPtkpSetting: jest.fn(),
+      findAllTerRates: jest.fn(),
+      createTerRate: jest.fn(),
       findActiveBpjsSettings: jest.fn(),
       findPtkpSetting: jest.fn(),
       findTerRate: jest.fn(),

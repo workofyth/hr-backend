@@ -57,6 +57,7 @@ describe('AttendanceService', () => {
 
     correctionRepository = {
       findById: jest.fn(),
+      findByStatus: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     };
@@ -406,6 +407,40 @@ describe('AttendanceService', () => {
       );
       expect(correctionRepository.update).not.toHaveBeenCalled();
       expect(auditLogService.record).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findPendingCorrections', () => {
+    const managerActingUser = { userId: 'manager-user-1', role: UserRole.MANAGER };
+    const hrActingUser = { userId: 'hr-user-1', role: UserRole.HR_ADMIN };
+    const managerEmployee = { id: 'manager-employee-1' } as Employee;
+
+    const ownTeamCorrection = {
+      id: 'correction-1',
+      employeeId: employee.id,
+      employee: { id: employee.id, managerId: 'manager-employee-1' },
+    } as unknown as AttendanceCorrection;
+    const otherTeamCorrection = {
+      id: 'correction-2',
+      employeeId: 'other-employee',
+      employee: { id: 'other-employee', managerId: 'someone-else' },
+    } as unknown as AttendanceCorrection;
+
+    it('HR/Super Admin melihat semua koreksi PENDING tanpa disaring', async () => {
+      correctionRepository.findByStatus.mockResolvedValue([ownTeamCorrection, otherTeamCorrection]);
+
+      const result = await service.findPendingCorrections(hrActingUser);
+
+      expect(result).toEqual([ownTeamCorrection, otherTeamCorrection]);
+    });
+
+    it('MANAGER hanya melihat koreksi milik anak buah langsungnya', async () => {
+      correctionRepository.findByStatus.mockResolvedValue([ownTeamCorrection, otherTeamCorrection]);
+      employeeRepository.findByUserId.mockResolvedValue(managerEmployee);
+
+      const result = await service.findPendingCorrections(managerActingUser);
+
+      expect(result).toEqual([ownTeamCorrection]);
     });
   });
 });

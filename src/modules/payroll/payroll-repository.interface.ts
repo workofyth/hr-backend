@@ -1,4 +1,5 @@
 import { DeepPartial, EntityManager } from 'typeorm';
+import { SalaryComponent } from './entities/salary-component.entity';
 import { EmployeeSalaryStructure } from './entities/employee-salary-structure.entity';
 import { BpjsSetting } from './entities/bpjs-setting.entity';
 import { TaxPtkpSetting } from './entities/tax-ptkp-setting.entity';
@@ -15,19 +16,43 @@ import { PayrollItemDetail } from './entities/payroll-item-detail.entity';
  * mengikuti pola `leave.repository.ts` tunggal (§2).
  */
 export interface IPayrollRepository {
+  /**
+   * Master komponen gaji (§5.5, "Master komponen gaji: gaji pokok,
+   * tunjangan..."). Data referensi per company — dikelola lewat endpoint
+   * `PayrollController` (bukan lagi migration/SQL manual, admin-dashboard-web-hr.md §5).
+   */
+  findSalaryComponents(companyId: string): Promise<SalaryComponent[]>;
+  createSalaryComponent(data: DeepPartial<SalaryComponent>): Promise<SalaryComponent>;
+
   /** Struktur gaji karyawan yang berlaku pada `asOfDate` (§5.5). */
   findActiveSalaryStructures(employeeId: string, asOfDate: string): Promise<EmployeeSalaryStructure[]>;
+  /** Seluruh histori struktur gaji seorang karyawan (bukan cuma yang aktif) — untuk halaman kelola gaji. */
+  findSalaryStructuresByEmployee(employeeId: string): Promise<EmployeeSalaryStructure[]>;
+  /** Entry TERBUKA (endDate null) untuk employee+component yang sama — dipakai untuk auto-tutup saat entry baru dibuat (checklist §8 dashboard: "tidak pernah overwrite data lama"). */
+  findOpenSalaryStructure(employeeId: string, salaryComponentId: string): Promise<EmployeeSalaryStructure | null>;
+  createSalaryStructure(
+    data: DeepPartial<EmployeeSalaryStructure>,
+    manager?: EntityManager,
+  ): Promise<EmployeeSalaryStructure>;
+  closeSalaryStructure(id: string, endDate: string, manager?: EntityManager): Promise<void>;
 
   /**
    * Satu baris `bpjs_settings` TERBARU per `type` (JHT/JKK/JKM/JP/KESEHATAN)
    * yang berlaku pada `asOfDate` — checklist §7: tarif tidak boleh hardcode.
    */
   findActiveBpjsSettings(asOfDate: string): Promise<BpjsSetting[]>;
+  /** Seluruh histori setting BPJS (semua tanggal berlaku) — untuk halaman pengaturan. */
+  findAllBpjsSettings(): Promise<BpjsSetting[]>;
+  createBpjsSetting(data: DeepPartial<BpjsSetting>): Promise<BpjsSetting>;
 
   findPtkpSetting(status: string, effectiveYear: number): Promise<TaxPtkpSetting | null>;
+  findAllPtkpSettings(): Promise<TaxPtkpSetting[]>;
+  createPtkpSetting(data: DeepPartial<TaxPtkpSetting>): Promise<TaxPtkpSetting>;
 
   /** Baris `tax_ter_rates` untuk kategori+tahun dengan bracket yang memuat `grossIncome`. */
   findTerRate(category: string, effectiveYear: number, grossIncome: number): Promise<TaxTerRate | null>;
+  findAllTerRates(): Promise<TaxTerRate[]>;
+  createTerRate(data: DeepPartial<TaxTerRate>): Promise<TaxTerRate>;
 
   findPeriodById(id: string): Promise<PayrollPeriod | null>;
   findPeriod(companyId: string, periodMonth: number, periodYear: number): Promise<PayrollPeriod | null>;

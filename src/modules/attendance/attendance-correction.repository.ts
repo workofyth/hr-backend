@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, EntityManager, Repository } from 'typeorm';
-import { AttendanceCorrection } from './entities/attendance-correction.entity';
+import { AttendanceCorrection, AttendanceCorrectionStatus } from './entities/attendance-correction.entity';
 import { IAttendanceCorrectionRepository } from './attendance-correction-repository.interface';
 
 /**
@@ -20,6 +20,14 @@ export class AttendanceCorrectionRepository implements IAttendanceCorrectionRepo
 
   findById(id: string): Promise<AttendanceCorrection | null> {
     return this.repository.findOne({ where: { id } });
+  }
+
+  findByStatus(status: AttendanceCorrectionStatus): Promise<AttendanceCorrection[]> {
+    return this.repository.find({
+      where: { status },
+      relations: ['employee'],
+      order: { createdAt: 'ASC' },
+    });
   }
 
   create(data: DeepPartial<AttendanceCorrection>): Promise<AttendanceCorrection> {

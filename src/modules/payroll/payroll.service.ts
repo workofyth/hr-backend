@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PAYROLL_GENERATED_EVENT, PAYROLL_REPOSITORY } from './payroll.constants';
 import { IPayrollRepository } from './payroll-repository.interface';
@@ -9,6 +9,16 @@ import { PayrollItem } from './entities/payroll-item.entity';
 import { PayrollItemDetail } from './entities/payroll-item-detail.entity';
 import { SalaryComponentType } from './entities/salary-component.entity';
 import { GeneratePayrollDto } from './dto/generate-payroll.dto';
+import { CreateSalaryComponentDto } from './dto/create-salary-component.dto';
+import { AssignSalaryStructureDto } from './dto/assign-salary-structure.dto';
+import { CreateBpjsSettingDto } from './dto/create-bpjs-setting.dto';
+import { CreatePtkpSettingDto } from './dto/create-ptkp-setting.dto';
+import { CreateTerRateDto } from './dto/create-ter-rate.dto';
+import { SalaryComponent } from './entities/salary-component.entity';
+import { EmployeeSalaryStructure } from './entities/employee-salary-structure.entity';
+import { BpjsSetting } from './entities/bpjs-setting.entity';
+import { TaxPtkpSetting } from './entities/tax-ptkp-setting.entity';
+import { TaxTerRate } from './entities/tax-ter-rate.entity';
 import { PayrollGeneratedEvent } from './events/payroll-generated.event';
 import { EMPLOYEE_REPOSITORY } from '../employee/employee.constants';
 import { IEmployeeRepository } from '../employee/employee-repository.interface';
@@ -221,6 +231,101 @@ export class PayrollService {
   }
 
   // ---------------------------------------------------------------------
+  // Pengaturan payroll (salary_components, employee_salary_structures,
+  // bpjs_settings, tax_ptkp_settings, tax_ter_rates) — admin-dashboard-web-hr.md
+  // §5: "Halaman terpisah untuk konfigurasi ... histori per tanggal
+  // berlaku, TIDAK BOLEH edit langsung angka yang sudah dipakai payroll
+  // periode lampau (harus buat entry baru dengan effective_date baru)".
+  // Karena itu seluruh method di bawah ini CREATE-ONLY (tidak ada
+  // update/delete) — konsisten dengan checklist §8 dashboard.
+  // ---------------------------------------------------------------------
+
+  findSalaryComponents(companyId: string): Promise<SalaryComponent[]> {
+    return this.payrollRepository.findSalaryComponents(companyId);
+  }
+
+  createSalaryComponent(dto: CreateSalaryComponentDto): Promise<SalaryComponent> {
+    return this.payrollRepository.createSalaryComponent(dto);
+  }
+
+  findSalaryStructures(employeeId: string): Promise<EmployeeSalaryStructure[]> {
+    return this.payrollRepository.findSalaryStructuresByEmployee(employeeId);
+  }
+
+  /**
+   * Assign komponen gaji ke karyawan. Kalau employee+component yang sama
+   * masih punya entry TERBUKA (endDate null), entry lama itu ditutup
+   * (endDate = sehari sebelum effectiveDate baru) DALAM transaction yang
+   * sama — bukan overwrite, dan mencegah dua entry aktif tumpang tindih
+   * yang akan membuat MonthlySalaryPayrollCalculator menghitung dobel.
+   */
+  async assignSalaryStructure(dto: AssignSalaryStructureDto): Promise<EmployeeSalaryStructure> {
+    const openEntry = await this.payrollRepository.findOpenSalaryStructure(dto.employeeId, dto.salaryComponentId);
+    const data = {
+      employeeId: dto.employeeId,
+      salaryComponentId: dto.salaryComponentId,
+      amount: toDecimalString(dto.amount),
+      effectiveDate: dto.effectiveDate,
+    };
+
+    if (openEntry) {
+      const dayBeforeNew = this.subtractOneDay(dto.effectiveDate);
+      if (dayBeforeNew < openEntry.effectiveDate) {
+        throw new BadRequestException(
+          'effectiveDate harus setelah tanggal mulai entry yang sedang aktif untuk komponen ini',
+        );
+      }
+
+      return this.transactionRunner.run(async (manager) => {
+        await this.payrollRepository.closeSalaryStructure(openEntry.id, dayBeforeNew, manager);
+        return this.payrollRepository.createSalaryStructure(data, manager);
+      });
+    }
+
+    return this.payrollRepository.createSalaryStructure(data);
+  }
+
+  findAllBpjsSettings(): Promise<BpjsSetting[]> {
+    return this.payrollRepository.findAllBpjsSettings();
+  }
+
+  createBpjsSetting(dto: CreateBpjsSettingDto): Promise<BpjsSetting> {
+    return this.payrollRepository.createBpjsSetting({
+      type: dto.type,
+      companyPercentage: dto.companyPercentage.toFixed(4),
+      employeePercentage: dto.employeePercentage.toFixed(4),
+      maxSalaryBase: dto.maxSalaryBase !== undefined ? toDecimalString(dto.maxSalaryBase) : null,
+      effectiveDate: dto.effectiveDate,
+    });
+  }
+
+  findAllPtkpSettings(): Promise<TaxPtkpSetting[]> {
+    return this.payrollRepository.findAllPtkpSettings();
+  }
+
+  createPtkpSetting(dto: CreatePtkpSettingDto): Promise<TaxPtkpSetting> {
+    return this.payrollRepository.createPtkpSetting({
+      status: dto.status,
+      annualAmount: toDecimalString(dto.annualAmount),
+      effectiveYear: dto.effectiveYear,
+    });
+  }
+
+  findAllTerRates(): Promise<TaxTerRate[]> {
+    return this.payrollRepository.findAllTerRates();
+  }
+
+  createTerRate(dto: CreateTerRateDto): Promise<TaxTerRate> {
+    return this.payrollRepository.createTerRate({
+      category: dto.category,
+      incomeFrom: toDecimalString(dto.incomeFrom),
+      incomeTo: toDecimalString(dto.incomeTo),
+      rate: dto.rate.toFixed(4),
+      effectiveYear: dto.effectiveYear,
+    });
+  }
+
+  // ---------------------------------------------------------------------
   // Helper privat
   // ---------------------------------------------------------------------
 
@@ -238,6 +343,12 @@ export class PayrollService {
 
   private formatPeriodDate(year: number, month: number, day: number): string {
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  private subtractOneDay(date: string): string {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
   }
 
   /**

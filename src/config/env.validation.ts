@@ -43,4 +43,9 @@ export const envValidationSchema = Joi.object({
   // decorator @Throttle di controller masing-masing, bukan lewat env.
   THROTTLE_TTL_SECONDS: Joi.number().positive().default(60),
   THROTTLE_LIMIT: Joi.number().positive().default(100),
+
+  // CORS (admin-dashboard-web-hr.md) — origin dashboard web (browser),
+  // dipisah dari mobile app yang tidak terikat same-origin policy. Daftar
+  // dipisah koma untuk multi-environment (dev/staging).
+  CORS_ORIGINS: Joi.string().default('http://localhost:3000'),
 });

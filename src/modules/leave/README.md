@@ -35,6 +35,7 @@ berjenjang (atasan → HR), auto-update saldo, dan integrasi status
 |---|---|
 | `GET /leave-types`, `GET /leave-balance`, `GET /leave-requests` | Self-service |
 | `POST /leave-requests`, `PUT /leave-requests/:id/cancel` | Self-service |
+| `GET /leave-approvals/pending` | SUPER_ADMIN, HR_ADMIN, MANAGER | Antrian approval (admin-dashboard-web-hr.md §5) — hanya baris `leave_approvals` yang levelnya = `currentApprovalLevel` request-nya (benar-benar actionable) |
 | `PUT /leave-requests/:id/approve`, `/reject` | SUPER_ADMIN, HR_ADMIN, MANAGER |
 
 ## Catatan

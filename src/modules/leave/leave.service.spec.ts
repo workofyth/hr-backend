@@ -48,6 +48,7 @@ describe('LeaveService', () => {
       createApproval: jest.fn(),
       updateApproval: jest.fn(),
       countByEmployeeAndStatus: jest.fn(),
+      findActionableApprovals: jest.fn(),
     };
 
     employeeRepository = {
@@ -457,6 +458,26 @@ describe('LeaveService', () => {
       } as unknown as LeaveRequest);
 
       await expect(service.cancel('user-1', 'req-1')).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('findPendingApprovals', () => {
+    it('HR/Super Admin melihat semua approval actionable (approverId tidak difilter)', async () => {
+      leaveRepository.findActionableApprovals.mockResolvedValue([{ id: 'approval-1' } as LeaveApproval]);
+
+      const result = await service.findPendingApprovals({ userId: 'hr-user-1', role: UserRole.HR_ADMIN });
+
+      expect(leaveRepository.findActionableApprovals).toHaveBeenCalledWith();
+      expect(result).toEqual([{ id: 'approval-1' }]);
+    });
+
+    it('MANAGER hanya melihat approval yang di-assign ke dirinya', async () => {
+      employeeRepository.findByUserId.mockResolvedValue({ id: 'manager-employee-1' } as Employee);
+      leaveRepository.findActionableApprovals.mockResolvedValue([{ id: 'approval-2' } as LeaveApproval]);
+
+      await service.findPendingApprovals({ userId: 'manager-user-1', role: UserRole.MANAGER });
+
+      expect(leaveRepository.findActionableApprovals).toHaveBeenCalledWith('manager-employee-1');
     });
   });
 });

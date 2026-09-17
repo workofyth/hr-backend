@@ -55,6 +55,12 @@ export class LeaveController {
   }
 
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER)
+  @Get('leave-approvals/pending')
+  findPendingApprovals(@CurrentUser() user: AuthenticatedUser) {
+    return this.leaveService.findPendingApprovals(user);
+  }
+
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER)
   @Put('leave-requests/:id/approve')
   approve(
     @CurrentUser() user: AuthenticatedUser,

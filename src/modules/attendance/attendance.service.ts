@@ -254,6 +254,27 @@ export class AttendanceService {
     });
   }
 
+  /**
+   * Antrian koreksi absensi PENDING (admin-dashboard-web-hr.md §5) — HR/
+   * Super Admin melihat semua, MANAGER hanya milik anak buah langsungnya
+   * (disaring di service layer dari relasi `employee` yang sudah di-load,
+   * bukan query terpisah ke IEmployeeRepository).
+   */
+  async findPendingCorrections(actingUser: AuthenticatedUser): Promise<AttendanceCorrection[]> {
+    const corrections = await this.correctionRepository.findByStatus(AttendanceCorrectionStatus.PENDING);
+
+    const isHrOrAbove = [UserRole.SUPER_ADMIN, UserRole.HR_ADMIN].includes(actingUser.role);
+    if (isHrOrAbove) {
+      return corrections;
+    }
+
+    const actingEmployee = await this.employeeRepository.findByUserId(actingUser.userId);
+    if (!actingEmployee) {
+      throw new NotFoundException('Data karyawan tidak ditemukan untuk akun ini');
+    }
+    return corrections.filter((correction) => correction.employee?.managerId === actingEmployee.id);
+  }
+
   async rejectCorrection(actingUser: AuthenticatedUser, correctionId: string): Promise<AttendanceCorrection> {
     const { correction, actingEmployee } = await this.loadCorrectionForDecision(actingUser, correctionId);
 

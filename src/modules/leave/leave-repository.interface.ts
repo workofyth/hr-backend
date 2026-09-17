@@ -55,4 +55,15 @@ export interface ILeaveRepository {
    * index `(employee_id, status)` (§5 "Indexing penting").
    */
   countByEmployeeAndStatus(employeeId: string, status: LeaveRequestStatus): Promise<number>;
+
+  /**
+   * Antrian approval cuti yang BENAR-BENAR bisa diputuskan sekarang
+   * (admin-dashboard-web-hr.md §5 "Leave Management — antrian approval") —
+   * `leave_approvals.status = PENDING` DAN `level` sama dengan
+   * `leave_requests.current_approval_level`nya (level di atas itu masih
+   * PENDING juga tapi belum "giliran"nya, tidak boleh muncul di sini).
+   * `approverId` opsional: kosongkan untuk HR/Super Admin (lihat semua),
+   * isi untuk MANAGER (hanya approval yang di-assign ke dirinya).
+   */
+  findActionableApprovals(approverId?: string): Promise<LeaveApproval[]>;
 }

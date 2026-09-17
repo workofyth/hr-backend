@@ -1,5 +1,5 @@
 import { DeepPartial, EntityManager } from 'typeorm';
-import { AttendanceCorrection } from './entities/attendance-correction.entity';
+import { AttendanceCorrection, AttendanceCorrectionStatus } from './entities/attendance-correction.entity';
 
 /**
  * Repository Pattern untuk tabel `attendance_corrections` (§5.3) —
@@ -9,6 +9,13 @@ import { AttendanceCorrection } from './entities/attendance-correction.entity';
  */
 export interface IAttendanceCorrectionRepository {
   findById(id: string): Promise<AttendanceCorrection | null>;
+  /**
+   * Antrian approval koreksi absensi (admin-dashboard-web-hr.md §5
+   * "Attendance Monitoring — approval antrian koreksi") — relasi `employee`
+   * ikut di-load supaya AttendanceService bisa menyaring hasilnya per
+   * MANAGER (hanya anak buah langsung) tanpa query tambahan.
+   */
+  findByStatus(status: AttendanceCorrectionStatus): Promise<AttendanceCorrection[]>;
   create(data: DeepPartial<AttendanceCorrection>): Promise<AttendanceCorrection>;
   update(
     id: string,

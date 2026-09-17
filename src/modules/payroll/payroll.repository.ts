@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, EntityManager, Repository } from 'typeorm';
+import { SalaryComponent } from './entities/salary-component.entity';
 import { EmployeeSalaryStructure } from './entities/employee-salary-structure.entity';
 import { BpjsSetting } from './entities/bpjs-setting.entity';
 import { TaxPtkpSetting } from './entities/tax-ptkp-setting.entity';
@@ -17,6 +18,7 @@ import { IPayrollRepository } from './payroll-repository.interface';
 @Injectable()
 export class PayrollRepository implements IPayrollRepository {
   constructor(
+    @InjectRepository(SalaryComponent) private readonly salaryComponentRepository: Repository<SalaryComponent>,
     @InjectRepository(EmployeeSalaryStructure)
     private readonly salaryStructureRepository: Repository<EmployeeSalaryStructure>,
     @InjectRepository(BpjsSetting) private readonly bpjsSettingRepository: Repository<BpjsSetting>,
@@ -27,6 +29,15 @@ export class PayrollRepository implements IPayrollRepository {
     @InjectRepository(PayrollItemDetail) private readonly itemDetailRepository: Repository<PayrollItemDetail>,
   ) {}
 
+  findSalaryComponents(companyId: string): Promise<SalaryComponent[]> {
+    return this.salaryComponentRepository.find({ where: { companyId }, order: { name: 'ASC' } });
+  }
+
+  createSalaryComponent(data: DeepPartial<SalaryComponent>): Promise<SalaryComponent> {
+    const component = this.salaryComponentRepository.create(data);
+    return this.salaryComponentRepository.save(component);
+  }
+
   findActiveSalaryStructures(employeeId: string, asOfDate: string): Promise<EmployeeSalaryStructure[]> {
     return this.salaryStructureRepository
       .createQueryBuilder('structure')
@@ -35,6 +46,46 @@ export class PayrollRepository implements IPayrollRepository {
       .andWhere('structure.effective_date <= :asOfDate', { asOfDate })
       .andWhere('(structure.end_date IS NULL OR structure.end_date >= :asOfDate)', { asOfDate })
       .getMany();
+  }
+
+  findSalaryStructuresByEmployee(employeeId: string): Promise<EmployeeSalaryStructure[]> {
+    return this.salaryStructureRepository.find({
+      where: { employeeId },
+      relations: ['salaryComponent'],
+      order: { effectiveDate: 'DESC' },
+    });
+  }
+
+  findOpenSalaryStructure(employeeId: string, salaryComponentId: string): Promise<EmployeeSalaryStructure | null> {
+    return this.salaryStructureRepository
+      .createQueryBuilder('structure')
+      .where('structure.employee_id = :employeeId', { employeeId })
+      .andWhere('structure.salary_component_id = :salaryComponentId', { salaryComponentId })
+      .andWhere('structure.end_date IS NULL')
+      .getOne();
+  }
+
+  createSalaryStructure(
+    data: DeepPartial<EmployeeSalaryStructure>,
+    manager?: EntityManager,
+  ): Promise<EmployeeSalaryStructure> {
+    const repository = manager ? manager.getRepository(EmployeeSalaryStructure) : this.salaryStructureRepository;
+    const structure = repository.create(data);
+    return repository.save(structure);
+  }
+
+  async closeSalaryStructure(id: string, endDate: string, manager?: EntityManager): Promise<void> {
+    const repository = manager ? manager.getRepository(EmployeeSalaryStructure) : this.salaryStructureRepository;
+    await repository.update(id, { endDate });
+  }
+
+  findAllBpjsSettings(): Promise<BpjsSetting[]> {
+    return this.bpjsSettingRepository.find({ order: { type: 'ASC', effectiveDate: 'DESC' } });
+  }
+
+  createBpjsSetting(data: DeepPartial<BpjsSetting>): Promise<BpjsSetting> {
+    const setting = this.bpjsSettingRepository.create(data);
+    return this.bpjsSettingRepository.save(setting);
   }
 
   findActiveBpjsSettings(asOfDate: string): Promise<BpjsSetting[]> {
@@ -51,6 +102,15 @@ export class PayrollRepository implements IPayrollRepository {
     return this.ptkpSettingRepository.findOne({ where: { status, effectiveYear } });
   }
 
+  findAllPtkpSettings(): Promise<TaxPtkpSetting[]> {
+    return this.ptkpSettingRepository.find({ order: { effectiveYear: 'DESC', status: 'ASC' } });
+  }
+
+  createPtkpSetting(data: DeepPartial<TaxPtkpSetting>): Promise<TaxPtkpSetting> {
+    const setting = this.ptkpSettingRepository.create(data);
+    return this.ptkpSettingRepository.save(setting);
+  }
+
   findTerRate(category: string, effectiveYear: number, grossIncome: number): Promise<TaxTerRate | null> {
     return this.terRateRepository
       .createQueryBuilder('rate')
@@ -59,6 +119,15 @@ export class PayrollRepository implements IPayrollRepository {
       .andWhere('rate.income_from <= :grossIncome', { grossIncome })
       .andWhere('rate.income_to > :grossIncome', { grossIncome })
       .getOne();
+  }
+
+  findAllTerRates(): Promise<TaxTerRate[]> {
+    return this.terRateRepository.find({ order: { effectiveYear: 'DESC', category: 'ASC', incomeFrom: 'ASC' } });
+  }
+
+  createTerRate(data: DeepPartial<TaxTerRate>): Promise<TaxTerRate> {
+    const rate = this.terRateRepository.create(data);
+    return this.terRateRepository.save(rate);
   }
 
   findPeriodById(id: string): Promise<PayrollPeriod | null> {

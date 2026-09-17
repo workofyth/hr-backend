@@ -65,6 +65,12 @@ export class AttendanceController {
   }
 
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER)
+  @Get('corrections/pending')
+  findPendingCorrections(@CurrentUser() user: AuthenticatedUser) {
+    return this.attendanceService.findPendingCorrections(user);
+  }
+
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER)
   @Put('corrections/:id/approve')
   approveCorrection(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.attendanceService.approveCorrection(user, id);

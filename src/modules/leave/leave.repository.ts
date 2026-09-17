@@ -4,7 +4,7 @@ import { DeepPartial, EntityManager, Repository } from 'typeorm';
 import { LeaveType } from './entities/leave-type.entity';
 import { LeaveBalance } from './entities/leave-balance.entity';
 import { LeaveRequest, LeaveRequestStatus } from './entities/leave-request.entity';
-import { LeaveApproval } from './entities/leave-approval.entity';
+import { LeaveApproval, LeaveApprovalStatus } from './entities/leave-approval.entity';
 import {
   ILeaveRepository,
   PaginatedResult,
@@ -129,5 +129,22 @@ export class LeaveRepository implements ILeaveRepository {
 
   countByEmployeeAndStatus(employeeId: string, status: LeaveRequestStatus): Promise<number> {
     return this.leaveRequestRepository.count({ where: { employeeId, status } });
+  }
+
+  findActionableApprovals(approverId?: string): Promise<LeaveApproval[]> {
+    const qb = this.leaveApprovalRepository
+      .createQueryBuilder('approval')
+      .innerJoinAndSelect('approval.leaveRequest', 'request')
+      .innerJoinAndSelect('request.employee', 'employee')
+      .innerJoinAndSelect('request.leaveType', 'leaveType')
+      .where('approval.status = :status', { status: LeaveApprovalStatus.PENDING })
+      .andWhere('approval.level = request.current_approval_level')
+      .orderBy('request.created_at', 'ASC');
+
+    if (approverId) {
+      qb.andWhere('approval.approver_id = :approverId', { approverId });
+    }
+
+    return qb.getMany();
   }
 }

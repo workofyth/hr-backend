@@ -3,9 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { join } from 'path';
 import configuration from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
 import { buildTypeOrmOptions } from './config/database.config';
@@ -47,13 +45,6 @@ import { HealthController } from './modules/health/health.controller';
     // Observer/Event-driven (§3): dipakai AttendanceService untuk emit
     // 'attendance.checked_in' tanpa bergantung langsung pada NotificationService.
     EventEmitterModule.forRoot(),
-    // Admin Dashboard statis (public/admin/) — murni consumer REST API,
-    // tidak ada logika bisnis di sini. Diserve di /admin, terpisah dari
-    // prefix /api/v1.
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'public', 'admin'),
-      serveRoot: '/admin',
-    }),
     AuthModule,
     EmployeeModule,
     OrganizationModule,

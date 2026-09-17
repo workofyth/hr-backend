@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PayrollService } from './payroll.service';
 import { IPayrollRepository } from './payroll-repository.interface';
@@ -72,7 +73,19 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
 
   beforeEach(() => {
     payrollRepository = {
+      findSalaryComponents: jest.fn(),
+      createSalaryComponent: jest.fn(),
       findActiveSalaryStructures: jest.fn(),
+      findSalaryStructuresByEmployee: jest.fn(),
+      findOpenSalaryStructure: jest.fn(),
+      createSalaryStructure: jest.fn(),
+      closeSalaryStructure: jest.fn(),
+      findAllBpjsSettings: jest.fn(),
+      createBpjsSetting: jest.fn(),
+      findAllPtkpSettings: jest.fn(),
+      createPtkpSetting: jest.fn(),
+      findAllTerRates: jest.fn(),
+      createTerRate: jest.fn(),
       findActiveBpjsSettings: jest.fn().mockResolvedValue(bpjsSettings),
       findPtkpSetting: jest.fn().mockResolvedValue({ status: 'TK0' } as TaxPtkpSetting),
       findTerRate: jest.fn().mockResolvedValue({ category: 'A', rate: '0.0200' } as TaxTerRate),
@@ -127,6 +140,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       createApproval: jest.fn(),
       updateApproval: jest.fn(),
       countByEmployeeAndStatus: jest.fn(),
+      findActionableApprovals: jest.fn(),
     };
 
     const runMock = jest.fn((work: (manager: never) => Promise<unknown>) => work(undefined as never));
@@ -341,6 +355,106 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       ).rejects.toMatchObject({ status: 409 });
       expect(payrollRepository.updatePeriod).not.toHaveBeenCalled();
       expect(auditLogService.record).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('assignSalaryStructure', () => {
+    it('membuat entry baru tanpa menutup entry lama jika belum ada entry terbuka', async () => {
+      payrollRepository.findOpenSalaryStructure.mockResolvedValue(null);
+      payrollRepository.createSalaryStructure.mockResolvedValue({ id: 'structure-1' } as EmployeeSalaryStructure);
+
+      await service.assignSalaryStructure({
+        employeeId: 'employee-1',
+        salaryComponentId: 'component-1',
+        amount: 5_000_000,
+        effectiveDate: '2026-01-01',
+      });
+
+      expect(payrollRepository.closeSalaryStructure).not.toHaveBeenCalled();
+      expect(payrollRepository.createSalaryStructure).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: '5000000.00', effectiveDate: '2026-01-01' }),
+      );
+    });
+
+    it('menutup entry terbuka (endDate = sehari sebelum effectiveDate baru) sebelum membuat entry baru — checklist §8: tidak overwrite', async () => {
+      payrollRepository.findOpenSalaryStructure.mockResolvedValue({
+        id: 'structure-old',
+        effectiveDate: '2025-01-01',
+      } as EmployeeSalaryStructure);
+      payrollRepository.createSalaryStructure.mockResolvedValue({ id: 'structure-new' } as EmployeeSalaryStructure);
+
+      await service.assignSalaryStructure({
+        employeeId: 'employee-1',
+        salaryComponentId: 'component-1',
+        amount: 6_000_000,
+        effectiveDate: '2026-07-01',
+      });
+
+      expect(payrollRepository.closeSalaryStructure).toHaveBeenCalledWith('structure-old', '2026-06-30', undefined);
+      expect(payrollRepository.createSalaryStructure).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: '6000000.00', effectiveDate: '2026-07-01' }),
+        undefined,
+      );
+    });
+
+    it('menolak dengan BadRequestException jika effectiveDate baru sebelum entry yang sedang aktif dimulai', async () => {
+      payrollRepository.findOpenSalaryStructure.mockResolvedValue({
+        id: 'structure-old',
+        effectiveDate: '2026-07-01',
+      } as EmployeeSalaryStructure);
+
+      await expect(
+        service.assignSalaryStructure({
+          employeeId: 'employee-1',
+          salaryComponentId: 'component-1',
+          amount: 6_000_000,
+          effectiveDate: '2026-01-01',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(payrollRepository.createSalaryStructure).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createBpjsSetting / createPtkpSetting / createTerRate', () => {
+    it('mengonversi rate desimal (number) ke string presisi-4 sebelum disimpan (kolom decimal(5,4))', async () => {
+      payrollRepository.createBpjsSetting.mockResolvedValue({} as BpjsSetting);
+
+      await service.createBpjsSetting({
+        type: 'JHT' as never,
+        companyPercentage: 0.037,
+        employeePercentage: 0.02,
+        effectiveDate: '2026-01-01',
+      });
+
+      expect(payrollRepository.createBpjsSetting).toHaveBeenCalledWith(
+        expect.objectContaining({ companyPercentage: '0.0370', employeePercentage: '0.0200' }),
+      );
+    });
+
+    it('mengonversi annualAmount PTKP ke string presisi-2 (kolom decimal(15,2))', async () => {
+      payrollRepository.createPtkpSetting.mockResolvedValue({} as TaxPtkpSetting);
+
+      await service.createPtkpSetting({ status: 'TK0', annualAmount: 54_000_000, effectiveYear: 2026 });
+
+      expect(payrollRepository.createPtkpSetting).toHaveBeenCalledWith(
+        expect.objectContaining({ annualAmount: '54000000.00', effectiveYear: 2026 }),
+      );
+    });
+
+    it('mengonversi rate TER ke string presisi-4', async () => {
+      payrollRepository.createTerRate.mockResolvedValue({} as TaxTerRate);
+
+      await service.createTerRate({
+        category: 'A',
+        incomeFrom: 5_000_000,
+        incomeTo: 10_000_000,
+        rate: 0.05,
+        effectiveYear: 2026,
+      });
+
+      expect(payrollRepository.createTerRate).toHaveBeenCalledWith(
+        expect.objectContaining({ rate: '0.0500', incomeFrom: '5000000.00', incomeTo: '10000000.00' }),
+      );
     });
   });
 });
