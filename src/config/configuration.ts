@@ -34,4 +34,12 @@ export default () => ({
     // terlalu jauh dari jam server (indikasi jam device diubah manual).
     maxClockSkewSeconds: parseInt(process.env.ATTENDANCE_MAX_CLOCK_SKEW_SECONDS as string, 10),
   },
+
+  // Rate limiting (roadmap Phase 6 "Keamanan") — `ttlMs` dikonversi ke
+  // milidetik sekali di sini karena @nestjs/throttler v5 menerima ttl
+  // dalam ms, sementara .env tetap dalam detik agar mudah dibaca operator.
+  throttle: {
+    ttlMs: parseInt(process.env.THROTTLE_TTL_SECONDS as string, 10) * 1000,
+    limit: parseInt(process.env.THROTTLE_LIMIT as string, 10),
+  },
 });

@@ -36,4 +36,11 @@ export const envValidationSchema = Joi.object({
   // src/modules/attendance/strategies/geofence-validation.strategy.ts.
   ATTENDANCE_MAX_GPS_ACCURACY_METERS: Joi.number().positive().default(50),
   ATTENDANCE_MAX_CLOCK_SKEW_SECONDS: Joi.number().positive().default(300),
+
+  // Rate limiting global (Phase 6 "Keamanan") — lihat app.module.ts &
+  // src/common/guards yang memakai @nestjs/throttler. Batas lebih ketat
+  // untuk endpoint sensitif (login, check-in) dikonfigurasi terpisah lewat
+  // decorator @Throttle di controller masing-masing, bukan lewat env.
+  THROTTLE_TTL_SECONDS: Joi.number().positive().default(60),
+  THROTTLE_LIMIT: Joi.number().positive().default(100),
 });

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle, seconds } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -11,6 +12,14 @@ import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { CreateAttendanceCorrectionDto } from './dto/create-attendance-correction.dto';
 import { FindAttendanceHistoryQueryDto } from './dto/find-attendance-history-query.dto';
+
+/**
+ * Batas check-in/out lebih ketat dari limit global (roadmap Phase 6
+ * "Keamanan") — mencegah spam/DoS ke endpoint yang menghitung ulang
+ * geofence & menulis DB tiap kali dipanggil. 10/menit cukup longgar untuk
+ * retry sungguhan akibat GPS/koneksi buruk, bukan tarif bisnis (§5.5).
+ */
+const ATTENDANCE_MARK_THROTTLE = { default: { limit: 10, ttl: seconds(60) } };
 
 /**
  * Hanya menerima request, validasi lewat DTO, dan memanggil AttendanceService
@@ -26,11 +35,13 @@ import { FindAttendanceHistoryQueryDto } from './dto/find-attendance-history-que
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
+  @Throttle(ATTENDANCE_MARK_THROTTLE)
   @Post('check-in')
   checkIn(@CurrentUser() user: AuthenticatedUser, @Body() dto: CheckInDto) {
     return this.attendanceService.checkIn(user.userId, dto);
   }
 
+  @Throttle(ATTENDANCE_MARK_THROTTLE)
   @Post('check-out')
   checkOut(@CurrentUser() user: AuthenticatedUser, @Body() dto: CheckOutDto) {
     return this.attendanceService.checkOut(user.userId, dto);

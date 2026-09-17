@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { join } from 'path';
 import configuration from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
@@ -29,6 +31,19 @@ import { HealthController } from './modules/health/health.controller';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => buildTypeOrmOptions(config),
     }),
+    // Rate limiting (roadmap Phase 6 "Keamanan"). Batas global di sini;
+    // endpoint sensitif (login, check-in/out) override lewat @Throttle
+    // per-route di controller masing-masing — lihat AuthController &
+    // AttendanceController.
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
+        {
+          ttl: config.get<number>('throttle.ttlMs') as number,
+          limit: config.get<number>('throttle.limit') as number,
+        },
+      ],
+    }),
     // Observer/Event-driven (§3): dipakai AttendanceService untuk emit
     // 'attendance.checked_in' tanpa bergantung langsung pada NotificationService.
     EventEmitterModule.forRoot(),
@@ -49,5 +64,12 @@ import { HealthController } from './modules/health/health.controller';
     NotificationModule,
   ],
   controllers: [HealthController],
+  providers: [
+    // ThrottlerGuard global (§3 Decorator Pattern, cross-cutting) — dipasang
+    // di seluruh endpoint secara default, bisa dikecualikan per-route lewat
+    // @SkipThrottle() (lihat HealthController) atau diperketat lewat
+    // @Throttle() (lihat AuthController/AttendanceController).
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}
