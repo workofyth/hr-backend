@@ -25,4 +25,13 @@ export default () => ({
     refreshSecret: process.env.JWT_REFRESH_SECRET,
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN,
   },
+
+  attendance: {
+    // roadmap-aplikasi-hr.md Phase 2 "Detail Teknis Radius": "Toleransi
+    // akurasi GPS (misal terima jika akurasi device < 50m)".
+    maxGpsAccuracyMeters: parseInt(process.env.ATTENDANCE_MAX_GPS_ACCURACY_METERS as string, 10),
+    // Deteksi anomali dasar: tolak absen jika jam perangkat menyimpang
+    // terlalu jauh dari jam server (indikasi jam device diubah manual).
+    maxClockSkewSeconds: parseInt(process.env.ATTENDANCE_MAX_CLOCK_SKEW_SECONDS as string, 10),
+  },
 });

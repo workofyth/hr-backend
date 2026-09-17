@@ -19,6 +19,7 @@ export interface PaginatedResult<T> {
 export interface IEmployeeRepository {
   findAll(params: PaginationParams): Promise<PaginatedResult<Employee>>;
   findById(id: string): Promise<Employee | null>;
+  findByUserId(userId: string): Promise<Employee | null>;
   findByEmployeeCode(employeeCode: string): Promise<Employee | null>;
   create(data: DeepPartial<Employee>, manager?: EntityManager): Promise<Employee>;
   update(id: string, data: DeepPartial<Employee>): Promise<Employee>;

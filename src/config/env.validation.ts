@@ -31,4 +31,9 @@ export const envValidationSchema = Joi.object({
   // Kunci enkripsi at-rest untuk data sensitif karyawan (nik, npwp,
   // bank_account_no) — lihat src/common/utils/encryption.util.ts.
   ENCRYPTION_KEY: Joi.string().min(16).required(),
+
+  // Absensi Radius/Geofencing (Phase 2) — lihat
+  // src/modules/attendance/strategies/geofence-validation.strategy.ts.
+  ATTENDANCE_MAX_GPS_ACCURACY_METERS: Joi.number().positive().default(50),
+  ATTENDANCE_MAX_CLOCK_SKEW_SECONDS: Joi.number().positive().default(300),
 });

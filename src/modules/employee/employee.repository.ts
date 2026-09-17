@@ -40,6 +40,10 @@ export class EmployeeRepository implements IEmployeeRepository {
     return this.repository.findOne({ where: { id }, relations: EmployeeRepository.DISPLAY_RELATIONS });
   }
 
+  findByUserId(userId: string): Promise<Employee | null> {
+    return this.repository.findOne({ where: { userId }, relations: EmployeeRepository.DISPLAY_RELATIONS });
+  }
+
   findByEmployeeCode(employeeCode: string): Promise<Employee | null> {
     return this.repository.findOne({ where: { employeeCode } });
   }

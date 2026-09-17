@@ -23,5 +23,9 @@ import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/tra
     { provide: EMPLOYEE_REPOSITORY, useClass: EmployeeRepository },
     { provide: TRANSACTION_RUNNER, useClass: TypeOrmTransactionRunner },
   ],
+  // EMPLOYEE_REPOSITORY diekspor supaya modul lain (mis. attendance) bisa
+  // mencari data karyawan (branch, manager) tanpa mengakses tabel
+  // `employees` langsung (Repository Pattern, §3).
+  exports: [EMPLOYEE_REPOSITORY],
 })
 export class EmployeeModule {}

@@ -41,6 +41,7 @@ describe('EmployeeService', () => {
     employeeRepository = {
       findAll: jest.fn(),
       findById: jest.fn(),
+      findByUserId: jest.fn(),
       findByEmployeeCode: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
