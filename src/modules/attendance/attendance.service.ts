@@ -4,10 +4,11 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { EntityManager } from 'typeorm';
 import { ATTENDANCE_CORRECTION_REPOSITORY, ATTENDANCE_REPOSITORY, ATTENDANCE_CHECKED_IN_EVENT } from './attendance.constants';
 import { IAttendanceRepository, PaginatedResult } from './attendance-repository.interface';
@@ -28,6 +29,9 @@ import { AttendanceCheckedInEvent } from './events/attendance-checked-in.event';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { combineDateAndTimeUtc, formatDateOnly } from '../../common/utils/date.util';
+import { LEAVE_APPROVED_EVENT, LEAVE_CANCELLED_EVENT } from '../leave/leave.constants';
+import { LeaveApprovedEvent } from '../leave/events/leave-approved.event';
+import { LeaveCancelledEvent } from '../leave/events/leave-cancelled.event';
 
 /**
  * Logika bisnis modul Attendance — roadmap-aplikasi-hr.md Phase 2, alur
@@ -41,6 +45,7 @@ import { combineDateAndTimeUtc, formatDateOnly } from '../../common/utils/date.u
  */
 @Injectable()
 export class AttendanceService {
+  private readonly logger = new Logger(AttendanceService.name);
   private readonly maxGpsAccuracyMeters: number;
   private readonly maxClockSkewSeconds: number;
 
@@ -395,5 +400,81 @@ export class AttendanceService {
       },
       manager,
     );
+  }
+
+  // ---------------------------------------------------------------------
+  // Observer/Event-driven — integrasi dengan modul Leave (§3 & §6:
+  // "setelah cuti disetujui -> update saldo & kalender tim"). AttendanceService
+  // TIDAK bergantung pada LeaveService — hanya mendengarkan event, sama
+  // seperti NotificationService mendengarkan 'attendance.checked_in'.
+  // ---------------------------------------------------------------------
+
+  @OnEvent(LEAVE_APPROVED_EVENT)
+  async handleLeaveApproved(event: LeaveApprovedEvent): Promise<void> {
+    try {
+      const employee = await this.employeeRepository.findById(event.employeeId);
+      if (!employee) return;
+
+      for (const date of event.dates) {
+        await this.markDateOnLeave(employee, date);
+      }
+    } catch (error) {
+      // Sama seperti NotificationService: kegagalan di sini tidak boleh
+      // menggagalkan approval cuti yang sudah tercatat di modul Leave.
+      this.logger.error('Gagal menandai attendance ON_LEAVE setelah cuti disetujui', error as Error);
+    }
+  }
+
+  @OnEvent(LEAVE_CANCELLED_EVENT)
+  async handleLeaveCancelled(event: LeaveCancelledEvent): Promise<void> {
+    try {
+      for (const date of event.dates) {
+        await this.revertDateOnLeave(event.employeeId, date);
+      }
+    } catch (error) {
+      this.logger.error('Gagal membatalkan tanda ON_LEAVE setelah cuti dibatalkan', error as Error);
+    }
+  }
+
+  /**
+   * Tandai satu tanggal sebagai ON_LEAVE (bukan ABSENT) — roadmap Phase 3:
+   * "Integrasi otomatis ke absensi (hari cuti tidak dihitung alpha)".
+   * Dilewati jika karyawan sudah benar-benar check-in di tanggal itu (data
+   * kehadiran nyata tidak boleh ditimpa) atau tidak ada jadwal shift pada
+   * tanggal tersebut (bukan hari kerja).
+   */
+  private async markDateOnLeave(employee: Employee, date: string): Promise<void> {
+    const existing = await this.attendanceRepository.findByEmployeeAndDate(employee.id, date);
+    if (existing?.checkInTime) return;
+
+    if (existing) {
+      await this.attendanceRepository.update(existing.id, { status: AttendanceStatus.ON_LEAVE });
+      return;
+    }
+
+    const shiftAssignment = await this.attendanceRepository.findActiveShiftAssignment(employee.id, date);
+    if (!shiftAssignment) return;
+
+    await this.attendanceRepository.create({
+      employeeId: employee.id,
+      branchId: employee.branchId,
+      shiftId: shiftAssignment.shiftId,
+      attendanceDate: date,
+      status: AttendanceStatus.ON_LEAVE,
+    });
+  }
+
+  /**
+   * Kebalikan dari `markDateOnLeave` saat pengajuan cuti yang sudah
+   * APPROVED dibatalkan. Hanya menyentuh baris yang murni hasil tanda
+   * ON_LEAVE otomatis (belum ada check-in sungguhan) — kembali ke ABSENT,
+   * baseline "belum ada data kehadiran" yang sama dipakai di
+   * `applyCorrectionToAttendance`.
+   */
+  private async revertDateOnLeave(employeeId: string, date: string): Promise<void> {
+    const existing = await this.attendanceRepository.findByEmployeeAndDate(employeeId, date);
+    if (!existing || existing.status !== AttendanceStatus.ON_LEAVE || existing.checkInTime) return;
+
+    await this.attendanceRepository.update(existing.id, { status: AttendanceStatus.ABSENT });
   }
 }

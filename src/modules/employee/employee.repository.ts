@@ -7,6 +7,7 @@ import {
   PaginatedResult,
   PaginationParams,
 } from './employee-repository.interface';
+import { UserRole } from '../../common/enums/user-role.enum';
 
 /**
  * Implementasi Repository Pattern untuk tabel `employees` (§5.2).
@@ -46,6 +47,16 @@ export class EmployeeRepository implements IEmployeeRepository {
 
   findByEmployeeCode(employeeCode: string): Promise<Employee | null> {
     return this.repository.findOne({ where: { employeeCode } });
+  }
+
+  findFirstByCompanyAndRole(companyId: string, role: UserRole): Promise<Employee | null> {
+    return this.repository
+      .createQueryBuilder('employee')
+      .innerJoin('employee.user', 'user')
+      .where('employee.company_id = :companyId', { companyId })
+      .andWhere('user.role = :role', { role })
+      .orderBy('employee.created_at', 'ASC')
+      .getOne();
   }
 
   create(data: DeepPartial<Employee>, manager?: EntityManager): Promise<Employee> {

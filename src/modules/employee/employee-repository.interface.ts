@@ -1,5 +1,6 @@
 import { DeepPartial, EntityManager } from 'typeorm';
 import { Employee } from './entities/employee.entity';
+import { UserRole } from '../../common/enums/user-role.enum';
 
 export interface PaginationParams {
   page: number;
@@ -21,6 +22,13 @@ export interface IEmployeeRepository {
   findById(id: string): Promise<Employee | null>;
   findByUserId(userId: string): Promise<Employee | null>;
   findByEmployeeCode(employeeCode: string): Promise<Employee | null>;
+  /**
+   * Cari karyawan pertama pada sebuah company yang memegang role tertentu
+   * (mis. HR_ADMIN) — dipakai HrApprovalHandler (leave/approval, §3 Chain of
+   * Responsibility) untuk resolve approver level HR tanpa modul leave perlu
+   * query langsung ke tabel `users`.
+   */
+  findFirstByCompanyAndRole(companyId: string, role: UserRole): Promise<Employee | null>;
   create(data: DeepPartial<Employee>, manager?: EntityManager): Promise<Employee>;
   update(id: string, data: DeepPartial<Employee>): Promise<Employee>;
   softDelete(id: string): Promise<void>;

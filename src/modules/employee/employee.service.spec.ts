@@ -43,6 +43,7 @@ describe('EmployeeService', () => {
       findById: jest.fn(),
       findByUserId: jest.fn(),
       findByEmployeeCode: jest.fn(),
+      findFirstByCompanyAndRole: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       softDelete: jest.fn(),
