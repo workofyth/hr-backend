@@ -4,11 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import { AttendanceService } from './attendance.service';
 import { IAttendanceRepository } from './attendance-repository.interface';
 import { IAttendanceCorrectionRepository } from './attendance-correction-repository.interface';
+import { IOvertimeRequestRepository } from './overtime-request-repository.interface';
 import { IEmployeeRepository } from '../employee/employee-repository.interface';
 import { TransactionRunner } from '../../database/transaction-runner';
 import { GeofenceValidationStrategy } from './strategies/geofence-validation.strategy';
 import { Attendance, AttendanceStatus } from './entities/attendance.entity';
 import { AttendanceCorrection, AttendanceCorrectionStatus } from './entities/attendance-correction.entity';
+import { OvertimeRequest, OvertimeRequestStatus } from './entities/overtime-request.entity';
 import { Employee } from '../employee/entities/employee.entity';
 import { EmployeeShiftAssignment } from '../employee/entities/employee-shift-assignment.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -19,6 +21,7 @@ describe('AttendanceService', () => {
   let service: AttendanceService;
   let attendanceRepository: jest.Mocked<IAttendanceRepository>;
   let correctionRepository: jest.Mocked<IAttendanceCorrectionRepository>;
+  let overtimeRequestRepository: jest.Mocked<IOvertimeRequestRepository>;
   let employeeRepository: jest.Mocked<IEmployeeRepository>;
   let transactionRunner: TransactionRunner;
   let eventEmitter: jest.Mocked<EventEmitter2>;
@@ -53,11 +56,23 @@ describe('AttendanceService', () => {
       update: jest.fn(),
       findActiveShiftAssignment: jest.fn(),
       countStatusesByEmployee: jest.fn(),
+      findShiftAssignmentsByEmployee: jest.fn(),
+      findOpenShiftAssignment: jest.fn(),
+      createShiftAssignment: jest.fn(),
+      closeShiftAssignment: jest.fn(),
     };
 
     correctionRepository = {
       findById: jest.fn(),
       findByStatus: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+
+    overtimeRequestRepository = {
+      findById: jest.fn(),
+      findByStatus: jest.fn(),
+      findApprovedByEmployeeAndDateRange: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     };
@@ -89,6 +104,7 @@ describe('AttendanceService', () => {
     service = new AttendanceService(
       attendanceRepository,
       correctionRepository,
+      overtimeRequestRepository,
       employeeRepository,
       transactionRunner,
       new GeofenceValidationStrategy(),
@@ -441,6 +457,230 @@ describe('AttendanceService', () => {
       const result = await service.findPendingCorrections(managerActingUser);
 
       expect(result).toEqual([ownTeamCorrection]);
+    });
+  });
+
+  describe('findShiftAssignments', () => {
+    it('mengambil riwayat penugasan shift milik karyawan', async () => {
+      const assignments = [{ id: 'assignment-1' } as EmployeeShiftAssignment];
+      attendanceRepository.findShiftAssignmentsByEmployee.mockResolvedValue(assignments);
+
+      const result = await service.findShiftAssignments('employee-1');
+
+      expect(attendanceRepository.findShiftAssignmentsByEmployee).toHaveBeenCalledWith('employee-1');
+      expect(result).toEqual(assignments);
+    });
+  });
+
+  describe('assignShift', () => {
+    it('membuat entry baru tanpa menutup entry lama jika belum ada penugasan terbuka', async () => {
+      attendanceRepository.findOpenShiftAssignment.mockResolvedValue(null);
+      attendanceRepository.createShiftAssignment.mockResolvedValue({ id: 'assignment-1' } as EmployeeShiftAssignment);
+
+      await service.assignShift({
+        employeeId: 'employee-1',
+        shiftId: 'shift-1',
+        effectiveDate: '2026-01-01',
+      });
+
+      expect(attendanceRepository.closeShiftAssignment).not.toHaveBeenCalled();
+      expect(attendanceRepository.createShiftAssignment).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeId: 'employee-1', shiftId: 'shift-1', effectiveDate: '2026-01-01' }),
+      );
+    });
+
+    it('menutup penugasan terbuka (endDate = sehari sebelum effectiveDate baru) sebelum membuat entry baru — checklist §8: tidak overwrite', async () => {
+      attendanceRepository.findOpenShiftAssignment.mockResolvedValue({
+        id: 'assignment-old',
+        effectiveDate: '2025-01-01',
+      } as EmployeeShiftAssignment);
+      attendanceRepository.createShiftAssignment.mockResolvedValue({ id: 'assignment-new' } as EmployeeShiftAssignment);
+
+      await service.assignShift({
+        employeeId: 'employee-1',
+        shiftId: 'shift-2',
+        effectiveDate: '2026-07-01',
+      });
+
+      expect(attendanceRepository.closeShiftAssignment).toHaveBeenCalledWith('assignment-old', '2026-06-30', undefined);
+      expect(attendanceRepository.createShiftAssignment).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeId: 'employee-1', shiftId: 'shift-2', effectiveDate: '2026-07-01' }),
+        undefined,
+      );
+    });
+
+    it('menolak dengan BadRequestException jika effectiveDate baru sebelum penugasan yang sedang aktif dimulai', async () => {
+      attendanceRepository.findOpenShiftAssignment.mockResolvedValue({
+        id: 'assignment-old',
+        effectiveDate: '2026-07-01',
+      } as EmployeeShiftAssignment);
+
+      await expect(
+        service.assignShift({
+          employeeId: 'employee-1',
+          shiftId: 'shift-2',
+          effectiveDate: '2026-01-01',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(attendanceRepository.createShiftAssignment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('requestOvertime', () => {
+    it('membuat pengajuan lembur berstatus PENDING untuk employee yang sedang login', async () => {
+      overtimeRequestRepository.create.mockResolvedValue({ id: 'overtime-1' } as OvertimeRequest);
+
+      await service.requestOvertime('user-1', {
+        date: '2026-01-15',
+        startTime: '2026-01-15T18:00:00Z',
+        endTime: '2026-01-15T20:00:00Z',
+        reason: 'Tutup buku bulanan',
+      });
+
+      expect(overtimeRequestRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          employeeId: employee.id,
+          date: '2026-01-15',
+          reason: 'Tutup buku bulanan',
+          status: OvertimeRequestStatus.PENDING,
+        }),
+      );
+    });
+
+    it('menolak dengan BadRequestException jika endTime tidak setelah startTime', async () => {
+      await expect(
+        service.requestOvertime('user-1', {
+          date: '2026-01-15',
+          startTime: '2026-01-15T20:00:00Z',
+          endTime: '2026-01-15T18:00:00Z',
+          reason: 'Tutup buku bulanan',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(overtimeRequestRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('approveOvertime', () => {
+    const pendingRequest = {
+      id: 'overtime-1',
+      employeeId: employee.id,
+      status: OvertimeRequestStatus.PENDING,
+    } as unknown as OvertimeRequest;
+
+    const managerActingUser = { userId: 'manager-user-1', role: UserRole.MANAGER };
+    const managerEmployee = { id: 'manager-employee-1' } as Employee;
+
+    it('mengizinkan atasan langsung menyetujui & mencatat audit log DALAM SATU transaction (checklist §7)', async () => {
+      overtimeRequestRepository.findById.mockResolvedValue(pendingRequest);
+      employeeRepository.findById.mockResolvedValue(employee);
+      employeeRepository.findByUserId.mockResolvedValue(managerEmployee);
+      overtimeRequestRepository.update.mockResolvedValue({
+        ...pendingRequest,
+        status: OvertimeRequestStatus.APPROVED,
+      } as OvertimeRequest);
+
+      const result = await service.approveOvertime(managerActingUser, 'overtime-1');
+
+      expect(overtimeRequestRepository.update).toHaveBeenCalledWith(
+        'overtime-1',
+        { status: OvertimeRequestStatus.APPROVED, approvedBy: managerEmployee.id },
+        undefined,
+      );
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'APPROVE_OVERTIME_REQUEST',
+          entityType: 'overtime_request',
+          entityId: 'overtime-1',
+        }),
+        undefined,
+      );
+      expect(result.status).toBe(OvertimeRequestStatus.APPROVED);
+    });
+
+    it('menolak dengan ForbiddenException jika bukan atasan langsung & bukan HR/Super Admin', async () => {
+      overtimeRequestRepository.findById.mockResolvedValue(pendingRequest);
+      employeeRepository.findById.mockResolvedValue(employee);
+      employeeRepository.findByUserId.mockResolvedValue({ id: 'other-manager' } as Employee);
+
+      await expect(service.approveOvertime(managerActingUser, 'overtime-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(overtimeRequestRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('menolak dengan ConflictException jika pengajuan sudah diproses sebelumnya', async () => {
+      overtimeRequestRepository.findById.mockResolvedValue({
+        ...pendingRequest,
+        status: OvertimeRequestStatus.APPROVED,
+      } as OvertimeRequest);
+
+      await expect(service.approveOvertime(managerActingUser, 'overtime-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+  });
+
+  describe('rejectOvertime', () => {
+    const pendingRequest = {
+      id: 'overtime-1',
+      employeeId: employee.id,
+      status: OvertimeRequestStatus.PENDING,
+    } as unknown as OvertimeRequest;
+
+    const managerActingUser = { userId: 'manager-user-1', role: UserRole.MANAGER };
+    const managerEmployee = { id: 'manager-employee-1' } as Employee;
+
+    it('mengizinkan atasan langsung menolak & mencatat audit log', async () => {
+      overtimeRequestRepository.findById.mockResolvedValue(pendingRequest);
+      employeeRepository.findById.mockResolvedValue(employee);
+      employeeRepository.findByUserId.mockResolvedValue(managerEmployee);
+      overtimeRequestRepository.update.mockResolvedValue({
+        ...pendingRequest,
+        status: OvertimeRequestStatus.REJECTED,
+      } as OvertimeRequest);
+
+      const result = await service.rejectOvertime(managerActingUser, 'overtime-1');
+
+      expect(overtimeRequestRepository.update).toHaveBeenCalledWith(
+        'overtime-1',
+        { status: OvertimeRequestStatus.REJECTED, approvedBy: managerEmployee.id },
+        undefined,
+      );
+      expect(result.status).toBe(OvertimeRequestStatus.REJECTED);
+    });
+  });
+
+  describe('findPendingOvertimeRequests', () => {
+    const managerActingUser = { userId: 'manager-user-1', role: UserRole.MANAGER };
+    const hrActingUser = { userId: 'hr-user-1', role: UserRole.HR_ADMIN };
+    const managerEmployee = { id: 'manager-employee-1' } as Employee;
+
+    const ownTeamRequest = {
+      id: 'overtime-1',
+      employeeId: employee.id,
+      employee: { id: employee.id, managerId: 'manager-employee-1' },
+    } as unknown as OvertimeRequest;
+    const otherTeamRequest = {
+      id: 'overtime-2',
+      employeeId: 'other-employee',
+      employee: { id: 'other-employee', managerId: 'someone-else' },
+    } as unknown as OvertimeRequest;
+
+    it('HR/Super Admin melihat semua pengajuan PENDING tanpa disaring', async () => {
+      overtimeRequestRepository.findByStatus.mockResolvedValue([ownTeamRequest, otherTeamRequest]);
+
+      const result = await service.findPendingOvertimeRequests(hrActingUser);
+
+      expect(result).toEqual([ownTeamRequest, otherTeamRequest]);
+    });
+
+    it('MANAGER hanya melihat pengajuan milik anak buah langsungnya', async () => {
+      overtimeRequestRepository.findByStatus.mockResolvedValue([ownTeamRequest, otherTeamRequest]);
+      employeeRepository.findByUserId.mockResolvedValue(managerEmployee);
+
+      const result = await service.findPendingOvertimeRequests(managerActingUser);
+
+      expect(result).toEqual([ownTeamRequest]);
     });
   });
 });

@@ -17,8 +17,8 @@ import { TaxTerRate } from './entities/tax-ter-rate.entity';
 import { EmployeeSalaryStructure } from './entities/employee-salary-structure.entity';
 import { IEmployeeRepository } from '../employee/employee-repository.interface';
 import { Employee, EmploymentType, MaritalStatus } from '../employee/entities/employee.entity';
-import { IAttendanceRepository } from '../attendance/attendance-repository.interface';
-import { Attendance } from '../attendance/entities/attendance.entity';
+import { IOvertimeRequestRepository } from '../attendance/overtime-request-repository.interface';
+import { OvertimeRequest } from '../attendance/entities/overtime-request.entity';
 import { ILeaveRepository } from '../leave/leave-repository.interface';
 import { LeaveRequest, LeaveRequestStatus } from '../leave/entities/leave-request.entity';
 import { TransactionRunner } from '../../database/transaction-runner';
@@ -28,7 +28,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
   let service: PayrollService;
   let payrollRepository: jest.Mocked<IPayrollRepository>;
   let employeeRepository: jest.Mocked<IEmployeeRepository>;
-  let attendanceRepository: jest.Mocked<IAttendanceRepository>;
+  let overtimeRequestRepository: jest.Mocked<IOvertimeRequestRepository>;
   let leaveRepository: jest.Mocked<ILeaveRepository>;
   let transactionRunner: TransactionRunner;
   let eventEmitter: jest.Mocked<EventEmitter2>;
@@ -115,14 +115,12 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       softDelete: jest.fn(),
     };
 
-    attendanceRepository = {
-      findByEmployeeAndDate: jest.fn(),
+    overtimeRequestRepository = {
       findById: jest.fn(),
-      findHistory: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+      findByStatus: jest.fn(),
+      findApprovedByEmployeeAndDateRange: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
       update: jest.fn(),
-      findActiveShiftAssignment: jest.fn(),
-      countStatusesByEmployee: jest.fn(),
     };
 
     leaveRepository = {
@@ -162,7 +160,7 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
     service = new PayrollService(
       payrollRepository,
       employeeRepository,
-      attendanceRepository,
+      overtimeRequestRepository,
       leaveRepository,
       transactionRunner,
       calculatorFactory,
@@ -206,16 +204,13 @@ describe('PayrollService.generate — 3 skenario wajib (angka manual sebagai pem
       makeSalaryStructure('Gaji Pokok', '3460000.00', true), // 3.460.000/173 = 20.000 tepat
       makeSalaryStructure('Tunjangan Transport', '500000.00', false),
     ]);
-    // 1 hari kerja: shift 08:00-17:00 (540 menit terjadwal), actual 720 menit -> lembur 180 menit = 3 jam.
-    attendanceRepository.findHistory.mockResolvedValue({
-      items: [
-        {
-          workDurationMinutes: 720,
-          shift: { startTime: '08:00:00', endTime: '17:00:00' },
-        } as unknown as Attendance,
-      ],
-      total: 1,
-    });
+    // 1 pengajuan lembur APPROVED: 17:00-20:00 = 180 menit = 3 jam.
+    overtimeRequestRepository.findApprovedByEmployeeAndDateRange.mockResolvedValue([
+      {
+        startTime: new Date('2026-06-15T17:00:00Z'),
+        endTime: new Date('2026-06-15T20:00:00Z'),
+      } as unknown as OvertimeRequest,
+    ]);
 
     await service.generate({ companyId: 'company-1', periodMonth: PERIOD_MONTH, periodYear: PERIOD_YEAR });
 

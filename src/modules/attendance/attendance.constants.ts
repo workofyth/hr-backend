@@ -1,5 +1,6 @@
 export const ATTENDANCE_REPOSITORY = Symbol('ATTENDANCE_REPOSITORY');
 export const ATTENDANCE_CORRECTION_REPOSITORY = Symbol('ATTENDANCE_CORRECTION_REPOSITORY');
+export const OVERTIME_REQUEST_REPOSITORY = Symbol('OVERTIME_REQUEST_REPOSITORY');
 
 /**
  * Nama event Observer Pattern — backend-architecture-hr.md §3 & §6:

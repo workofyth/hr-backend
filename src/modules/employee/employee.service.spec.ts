@@ -169,4 +169,42 @@ describe('EmployeeService', () => {
       expect(employeeRepository.softDelete).not.toHaveBeenCalled();
     });
   });
+
+  describe('findMe', () => {
+    it('mengambil data employee milik userId yang sedang login', async () => {
+      employeeRepository.findByUserId.mockResolvedValue(fakeEmployee);
+
+      const result = await service.findMe('user-1');
+
+      expect(employeeRepository.findByUserId).toHaveBeenCalledWith('user-1');
+      expect(result).toEqual(fakeEmployee);
+    });
+
+    it('melempar NotFoundException jika akun ini tidak punya data employee', async () => {
+      employeeRepository.findByUserId.mockResolvedValue(null);
+
+      await expect(service.findMe('user-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('updateMe', () => {
+    it('hanya mengizinkan update field self-service (bankAccountNo/bankName) pada employee milik userId sendiri', async () => {
+      employeeRepository.findByUserId.mockResolvedValue(fakeEmployee);
+      employeeRepository.update.mockResolvedValue({ ...fakeEmployee, bankAccountNo: '999' } as Employee);
+
+      await service.updateMe('user-1', { bankAccountNo: '999', bankName: 'Mandiri' });
+
+      expect(employeeRepository.update).toHaveBeenCalledWith('employee-1', {
+        bankAccountNo: '999',
+        bankName: 'Mandiri',
+      });
+    });
+
+    it('melempar NotFoundException tanpa memanggil update jika akun ini tidak punya data employee', async () => {
+      employeeRepository.findByUserId.mockResolvedValue(null);
+
+      await expect(service.updateMe('user-1', { bankName: 'Mandiri' })).rejects.toBeInstanceOf(NotFoundException);
+      expect(employeeRepository.update).not.toHaveBeenCalled();
+    });
+  });
 });

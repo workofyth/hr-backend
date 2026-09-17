@@ -49,4 +49,17 @@ export interface IAttendanceRepository {
    * (§5 "Indexing penting").
    */
   countStatusesByEmployee(employeeId: string, startDate: string, endDate: string): Promise<AttendanceStatusCounts>;
+
+  /**
+   * Seluruh histori penugasan shift seorang karyawan (bukan cuma yang
+   * aktif) — dipakai halaman kelola jadwal shift di dashboard.
+   */
+  findShiftAssignmentsByEmployee(employeeId: string): Promise<EmployeeShiftAssignment[]>;
+  /** Penugasan shift TERBUKA (endDate null) — untuk auto-tutup saat penugasan baru dibuat. */
+  findOpenShiftAssignment(employeeId: string): Promise<EmployeeShiftAssignment | null>;
+  createShiftAssignment(
+    data: DeepPartial<EmployeeShiftAssignment>,
+    manager?: EntityManager,
+  ): Promise<EmployeeShiftAssignment>;
+  closeShiftAssignment(id: string, endDate: string, manager?: EntityManager): Promise<void>;
 }

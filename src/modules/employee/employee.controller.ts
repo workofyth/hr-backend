@@ -14,19 +14,22 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { EmployeeService } from './employee.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { FindEmployeesQueryDto } from './dto/find-employees-query.dto';
 
 /**
  * Hanya menerima request, validasi lewat DTO, dan memanggil EmployeeService
  * — tidak ada logika bisnis di sini (checklist §7 backend-architecture-hr.md).
- * Catatan: endpoint self-service ("karyawan lihat/update data sendiri") belum
- * dibuat di Phase 1 ini — endpoint di bawah untuk HR_ADMIN/SUPER_ADMIN
- * (kelola semua karyawan) dan MANAGER/FINANCE (baca saja, untuk approval &
- * payroll).
+ * Rute `me` didaftarkan sebelum `:id` supaya tidak ditangkap ParseUUIDPipe.
+ * Endpoint `:id` untuk HR_ADMIN/SUPER_ADMIN (kelola semua karyawan) dan
+ * MANAGER/FINANCE (baca saja, untuk approval & payroll); endpoint `me`
+ * untuk self-service (roadmap Phase 1), terbuka ke semua role terautentikasi.
  */
 @ApiTags('employee')
 @ApiBearerAuth()
@@ -34,6 +37,16 @@ import { FindEmployeesQueryDto } from './dto/find-employees-query.dto';
 @Controller('employees')
 export class EmployeeController {
   constructor(private readonly employeeService: EmployeeService) {}
+
+  @Get('me')
+  findMe(@CurrentUser() user: AuthenticatedUser) {
+    return this.employeeService.findMe(user.userId);
+  }
+
+  @Put('me')
+  updateMe(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateMyProfileDto) {
+    return this.employeeService.updateMe(user.userId, dto);
+  }
 
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN)
   @Post()

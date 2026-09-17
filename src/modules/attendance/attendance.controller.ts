@@ -11,7 +11,10 @@ import { AttendanceService } from './attendance.service';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { CreateAttendanceCorrectionDto } from './dto/create-attendance-correction.dto';
+import { CreateOvertimeRequestDto } from './dto/create-overtime-request.dto';
 import { FindAttendanceHistoryQueryDto } from './dto/find-attendance-history-query.dto';
+import { AssignShiftDto } from './dto/assign-shift.dto';
+import { FindShiftAssignmentsQueryDto } from './dto/find-shift-assignments-query.dto';
 
 /**
  * Batas check-in/out lebih ketat dari limit global (roadmap Phase 6
@@ -80,5 +83,40 @@ export class AttendanceController {
   @Put('corrections/:id/reject')
   rejectCorrection(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.attendanceService.rejectCorrection(user, id);
+  }
+
+  @Post('overtime-request')
+  requestOvertime(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateOvertimeRequestDto) {
+    return this.attendanceService.requestOvertime(user.userId, dto);
+  }
+
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER)
+  @Get('overtime/pending')
+  findPendingOvertimeRequests(@CurrentUser() user: AuthenticatedUser) {
+    return this.attendanceService.findPendingOvertimeRequests(user);
+  }
+
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER)
+  @Put('overtime/:id/approve')
+  approveOvertime(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.attendanceService.approveOvertime(user, id);
+  }
+
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN, UserRole.MANAGER)
+  @Put('overtime/:id/reject')
+  rejectOvertime(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.attendanceService.rejectOvertime(user, id);
+  }
+
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN)
+  @Get('shift-assignments')
+  findShiftAssignments(@Query() query: FindShiftAssignmentsQueryDto) {
+    return this.attendanceService.findShiftAssignments(query.employeeId);
+  }
+
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN)
+  @Post('shift-assignments')
+  assignShift(@Body() dto: AssignShiftDto) {
+    return this.attendanceService.assignShift(dto);
   }
 }

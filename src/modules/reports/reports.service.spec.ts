@@ -49,6 +49,10 @@ describe('ReportsService', () => {
       update: jest.fn(),
       findActiveShiftAssignment: jest.fn(),
       countStatusesByEmployee: jest.fn(),
+      findShiftAssignmentsByEmployee: jest.fn(),
+      findOpenShiftAssignment: jest.fn(),
+      createShiftAssignment: jest.fn(),
+      closeShiftAssignment: jest.fn(),
     };
 
     leaveRepository = {

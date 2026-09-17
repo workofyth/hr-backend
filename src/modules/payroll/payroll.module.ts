@@ -25,8 +25,9 @@ import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/tra
     // EMPLOYEE_REPOSITORY: daftar employee aktif per company + data PTKP
     // (maritalStatus/dependentsCount/joinDate/resignDate/employmentType).
     EmployeeModule,
-    // ATTENDANCE_REPOSITORY: jam lembur (dari work_duration_minutes vs
-    // jadwal shift) — lihat catatan di PayrollService.computeOvertimeHours.
+    // ATTENDANCE_REPOSITORY: potongan alpha (hari tanpa attendance).
+    // OVERTIME_REQUEST_REPOSITORY: jam lembur — hanya overtime_requests
+    // berstatus APPROVED (lihat PayrollService.computeOvertimeHours).
     AttendanceModule,
     // LEAVE_REPOSITORY: hari unpaid leave untuk potongan gaji.
     LeaveModule,

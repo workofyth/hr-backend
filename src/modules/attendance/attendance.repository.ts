@@ -124,4 +124,34 @@ export class AttendanceRepository implements IAttendanceRepository {
 
     return counts;
   }
+
+  findShiftAssignmentsByEmployee(employeeId: string): Promise<EmployeeShiftAssignment[]> {
+    return this.shiftAssignmentRepository.find({
+      where: { employeeId },
+      relations: ['shift'],
+      order: { effectiveDate: 'DESC' },
+    });
+  }
+
+  findOpenShiftAssignment(employeeId: string): Promise<EmployeeShiftAssignment | null> {
+    return this.shiftAssignmentRepository
+      .createQueryBuilder('assignment')
+      .where('assignment.employee_id = :employeeId', { employeeId })
+      .andWhere('assignment.end_date IS NULL')
+      .getOne();
+  }
+
+  createShiftAssignment(
+    data: DeepPartial<EmployeeShiftAssignment>,
+    manager?: EntityManager,
+  ): Promise<EmployeeShiftAssignment> {
+    const repository = manager ? manager.getRepository(EmployeeShiftAssignment) : this.shiftAssignmentRepository;
+    const assignment = repository.create(data);
+    return repository.save(assignment);
+  }
+
+  async closeShiftAssignment(id: string, endDate: string, manager?: EntityManager): Promise<void> {
+    const repository = manager ? manager.getRepository(EmployeeShiftAssignment) : this.shiftAssignmentRepository;
+    await repository.update(id, { endDate });
+  }
 }

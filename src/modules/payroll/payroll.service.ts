@@ -22,9 +22,8 @@ import { TaxTerRate } from './entities/tax-ter-rate.entity';
 import { PayrollGeneratedEvent } from './events/payroll-generated.event';
 import { EMPLOYEE_REPOSITORY } from '../employee/employee.constants';
 import { IEmployeeRepository } from '../employee/employee-repository.interface';
-import { ATTENDANCE_REPOSITORY } from '../attendance/attendance.constants';
-import { IAttendanceRepository } from '../attendance/attendance-repository.interface';
-import { Shift } from '../../database/entities/shift.entity';
+import { OVERTIME_REQUEST_REPOSITORY } from '../attendance/attendance.constants';
+import { IOvertimeRequestRepository } from '../attendance/overtime-request-repository.interface';
 import { LEAVE_REPOSITORY } from '../leave/leave.constants';
 import { ILeaveRepository } from '../leave/leave-repository.interface';
 import { TRANSACTION_RUNNER, TransactionRunner } from '../../database/transaction-runner';
@@ -52,7 +51,7 @@ export class PayrollService {
   constructor(
     @Inject(PAYROLL_REPOSITORY) private readonly payrollRepository: IPayrollRepository,
     @Inject(EMPLOYEE_REPOSITORY) private readonly employeeRepository: IEmployeeRepository,
-    @Inject(ATTENDANCE_REPOSITORY) private readonly attendanceRepository: IAttendanceRepository,
+    @Inject(OVERTIME_REQUEST_REPOSITORY) private readonly overtimeRequestRepository: IOvertimeRequestRepository,
     @Inject(LEAVE_REPOSITORY) private readonly leaveRepository: ILeaveRepository,
     @Inject(TRANSACTION_RUNNER) private readonly transactionRunner: TransactionRunner,
     private readonly calculatorFactory: PayrollCalculatorFactory,
@@ -97,7 +96,7 @@ export class PayrollService {
         if (salaryStructures.length === 0) continue;
 
         const unpaidLeaveDays = await this.computeUnpaidLeaveDays(employee.id, periodStartDate, periodEndDate);
-        const overtimeHours = await this.computeOvertimeHours(employee.id, dto.periodMonth, dto.periodYear);
+        const overtimeHours = await this.computeOvertimeHours(employee.id, periodStartDate, periodEndDate);
 
         const calculator = this.calculatorFactory.getCalculator(employee.employmentType);
         const result = await calculator.calculate({
@@ -399,33 +398,28 @@ export class PayrollService {
   }
 
   /**
-   * Jam lembur (roadmap Phase 4) — diturunkan dari kelebihan
-   * `attendances.work_duration_minutes` terhadap jadwal shift, BUKAN dari
-   * tabel `overtime_requests` (§5.3) yang didokumentasikan di roadmap Phase
-   * 2 namun belum pernah dibuat/diimplementasikan di modul Attendance.
-   * Ini adalah penyederhanaan yang disengaja & didokumentasikan — belum ada
-   * alur pengajuan/approval lembur terpisah pada fase ini.
+   * Jam lembur (roadmap Phase 4) — dihitung dari `overtime_requests` (§5.3)
+   * yang sudah APPROVED atasan/HR (`AttendanceService.approveOvertime`),
+   * bukan lagi diturunkan dari kelebihan `attendances.work_duration_minutes`
+   * terhadap jadwal shift (penyederhanaan sementara sebelum alur
+   * pengajuan/approval lembur ada; sudah tidak berlaku).
    */
-  private async computeOvertimeHours(employeeId: string, month: number, year: number): Promise<number> {
-    const { items } = await this.attendanceRepository.findHistory({ employeeId, page: 1, limit: 31, month, year });
+  private async computeOvertimeHours(
+    employeeId: string,
+    periodStartDate: string,
+    periodEndDate: string,
+  ): Promise<number> {
+    const approvedRequests = await this.overtimeRequestRepository.findApprovedByEmployeeAndDateRange(
+      employeeId,
+      periodStartDate,
+      periodEndDate,
+    );
 
-    let totalOvertimeMinutes = 0;
-    for (const attendance of items) {
-      if (!attendance.workDurationMinutes || !attendance.shift) continue;
-      const scheduledMinutes = this.scheduledShiftMinutes(attendance.shift);
-      const overtimeMinutes = attendance.workDurationMinutes - scheduledMinutes;
-      if (overtimeMinutes > 0) totalOvertimeMinutes += overtimeMinutes;
+    let totalMinutes = 0;
+    for (const request of approvedRequests) {
+      totalMinutes += (new Date(request.endTime).getTime() - new Date(request.startTime).getTime()) / 60000;
     }
 
-    return Math.round((totalOvertimeMinutes / 60) * 100) / 100;
-  }
-
-  private scheduledShiftMinutes(shift: Shift): number {
-    return this.parseTimeToMinutes(shift.endTime) - this.parseTimeToMinutes(shift.startTime);
-  }
-
-  private parseTimeToMinutes(time: string): number {
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
+    return Math.round((totalMinutes / 60) * 100) / 100;
   }
 }

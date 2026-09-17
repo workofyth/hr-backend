@@ -8,6 +8,7 @@ import { TRANSACTION_RUNNER, TransactionRunner } from '../../database/transactio
 import { hashPassword } from '../../common/utils/password.util';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { Employee, EmployeeStatus } from './entities/employee.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
 
@@ -107,5 +108,18 @@ export class EmployeeService {
   async remove(id: string): Promise<void> {
     await this.findOne(id);
     await this.employeeRepository.softDelete(id);
+  }
+
+  async findMe(userId: string): Promise<Employee> {
+    const employee = await this.employeeRepository.findByUserId(userId);
+    if (!employee) {
+      throw new NotFoundException('Data karyawan untuk akun ini tidak ditemukan');
+    }
+    return employee;
+  }
+
+  async updateMe(userId: string, dto: UpdateMyProfileDto): Promise<Employee> {
+    const employee = await this.findMe(userId);
+    return this.employeeRepository.update(employee.id, dto);
   }
 }

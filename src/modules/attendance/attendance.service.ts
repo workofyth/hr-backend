@@ -10,21 +10,31 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { EntityManager } from 'typeorm';
-import { ATTENDANCE_CORRECTION_REPOSITORY, ATTENDANCE_REPOSITORY, ATTENDANCE_CHECKED_IN_EVENT } from './attendance.constants';
+import {
+  ATTENDANCE_CORRECTION_REPOSITORY,
+  ATTENDANCE_REPOSITORY,
+  ATTENDANCE_CHECKED_IN_EVENT,
+  OVERTIME_REQUEST_REPOSITORY,
+} from './attendance.constants';
 import { IAttendanceRepository, PaginatedResult } from './attendance-repository.interface';
 import { IAttendanceCorrectionRepository } from './attendance-correction-repository.interface';
+import { IOvertimeRequestRepository } from './overtime-request-repository.interface';
 import { EMPLOYEE_REPOSITORY } from '../employee/employee.constants';
 import { IEmployeeRepository } from '../employee/employee-repository.interface';
 import { Employee } from '../employee/entities/employee.entity';
+import { EmployeeShiftAssignment } from '../employee/entities/employee-shift-assignment.entity';
 import { TRANSACTION_RUNNER, TransactionRunner } from '../../database/transaction-runner';
 import { GeofenceValidationStrategy } from './strategies/geofence-validation.strategy';
 import { Attendance, AttendanceStatus } from './entities/attendance.entity';
 import { AttendanceCorrection, AttendanceCorrectionStatus } from './entities/attendance-correction.entity';
+import { OvertimeRequest, OvertimeRequestStatus } from './entities/overtime-request.entity';
 import { Shift } from '../../database/entities/shift.entity';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { CreateAttendanceCorrectionDto } from './dto/create-attendance-correction.dto';
+import { CreateOvertimeRequestDto } from './dto/create-overtime-request.dto';
 import { FindAttendanceHistoryQueryDto } from './dto/find-attendance-history-query.dto';
+import { AssignShiftDto } from './dto/assign-shift.dto';
 import { AttendanceCheckedInEvent } from './events/attendance-checked-in.event';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -54,6 +64,8 @@ export class AttendanceService {
     @Inject(ATTENDANCE_REPOSITORY) private readonly attendanceRepository: IAttendanceRepository,
     @Inject(ATTENDANCE_CORRECTION_REPOSITORY)
     private readonly correctionRepository: IAttendanceCorrectionRepository,
+    @Inject(OVERTIME_REQUEST_REPOSITORY)
+    private readonly overtimeRequestRepository: IOvertimeRequestRepository,
     @Inject(EMPLOYEE_REPOSITORY) private readonly employeeRepository: IEmployeeRepository,
     @Inject(TRANSACTION_RUNNER) private readonly transactionRunner: TransactionRunner,
     private readonly geofenceStrategy: GeofenceValidationStrategy,
@@ -275,6 +287,48 @@ export class AttendanceService {
     return corrections.filter((correction) => correction.employee?.managerId === actingEmployee.id);
   }
 
+  // ---------------------------------------------------------------------
+  // Penugasan shift (admin-dashboard-web-hr.md §5 "Organization Settings")
+  // — sebelumnya TIDAK ADA endpoint untuk ini sama sekali; tanpa penugasan
+  // shift, check-in SELALU gagal dengan "Jadwal shift tidak ditemukan".
+  // ---------------------------------------------------------------------
+
+  findShiftAssignments(employeeId: string): Promise<EmployeeShiftAssignment[]> {
+    return this.attendanceRepository.findShiftAssignmentsByEmployee(employeeId);
+  }
+
+  /**
+   * Assign shift ke karyawan. Penugasan LAMA yang masih terbuka (endDate
+   * null) otomatis ditutup (endDate = sehari sebelum effectiveDate baru)
+   * DALAM transaction yang sama — bukan overwrite, dan mencegah dua
+   * penugasan aktif tumpang tindih (checklist §8 dashboard).
+   */
+  async assignShift(dto: AssignShiftDto): Promise<EmployeeShiftAssignment> {
+    const openAssignment = await this.attendanceRepository.findOpenShiftAssignment(dto.employeeId);
+
+    if (openAssignment) {
+      const dayBeforeNew = this.subtractOneDay(dto.effectiveDate);
+      if (dayBeforeNew < openAssignment.effectiveDate) {
+        throw new BadRequestException(
+          'effectiveDate harus setelah tanggal mulai penugasan shift yang sedang aktif',
+        );
+      }
+
+      return this.transactionRunner.run(async (manager) => {
+        await this.attendanceRepository.closeShiftAssignment(openAssignment.id, dayBeforeNew, manager);
+        return this.attendanceRepository.createShiftAssignment(dto, manager);
+      });
+    }
+
+    return this.attendanceRepository.createShiftAssignment(dto);
+  }
+
+  private subtractOneDay(date: string): string {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
   async rejectCorrection(actingUser: AuthenticatedUser, correctionId: string): Promise<AttendanceCorrection> {
     const { correction, actingEmployee } = await this.loadCorrectionForDecision(actingUser, correctionId);
 
@@ -306,6 +360,133 @@ export class AttendanceService {
 
       return updated;
     });
+  }
+
+  // ---------------------------------------------------------------------
+  // Lembur (overtime_requests, §5.3) — sebelumnya TIDAK ADA alur pengajuan/
+  // approval; PayrollService menurunkan jam lembur dari selisih
+  // work_duration_minutes sebagai penyederhanaan sementara.
+  // ---------------------------------------------------------------------
+
+  async requestOvertime(userId: string, dto: CreateOvertimeRequestDto): Promise<OvertimeRequest> {
+    const employee = await this.getEmployeeByUserIdOrThrow(userId);
+    const startTime = new Date(dto.startTime);
+    const endTime = new Date(dto.endTime);
+    if (endTime <= startTime) {
+      throw new BadRequestException('endTime harus setelah startTime');
+    }
+
+    return this.overtimeRequestRepository.create({
+      employeeId: employee.id,
+      date: dto.date,
+      startTime,
+      endTime,
+      reason: dto.reason,
+      status: OvertimeRequestStatus.PENDING,
+    });
+  }
+
+  /**
+   * Antrian lembur PENDING — pola sama seperti `findPendingCorrections`:
+   * HR/Super Admin melihat semua, MANAGER hanya milik anak buah langsungnya.
+   */
+  async findPendingOvertimeRequests(actingUser: AuthenticatedUser): Promise<OvertimeRequest[]> {
+    const requests = await this.overtimeRequestRepository.findByStatus(OvertimeRequestStatus.PENDING);
+
+    const isHrOrAbove = [UserRole.SUPER_ADMIN, UserRole.HR_ADMIN].includes(actingUser.role);
+    if (isHrOrAbove) {
+      return requests;
+    }
+
+    const actingEmployee = await this.employeeRepository.findByUserId(actingUser.userId);
+    if (!actingEmployee) {
+      throw new NotFoundException('Data karyawan tidak ditemukan untuk akun ini');
+    }
+    return requests.filter((request) => request.employee?.managerId === actingEmployee.id);
+  }
+
+  async approveOvertime(actingUser: AuthenticatedUser, requestId: string): Promise<OvertimeRequest> {
+    const { request, actingEmployee } = await this.loadOvertimeRequestForDecision(actingUser, requestId);
+
+    return this.transactionRunner.run(async (manager) => {
+      const updated = await this.overtimeRequestRepository.update(
+        request.id,
+        { status: OvertimeRequestStatus.APPROVED, approvedBy: actingEmployee.id },
+        manager,
+      );
+
+      await this.auditLogService.record(
+        {
+          userId: actingUser.userId,
+          action: 'APPROVE_OVERTIME_REQUEST',
+          entityType: 'overtime_request',
+          entityId: request.id,
+          oldValue: { status: OvertimeRequestStatus.PENDING },
+          newValue: { status: OvertimeRequestStatus.APPROVED, approvedBy: actingEmployee.id },
+        },
+        manager,
+      );
+
+      return updated;
+    });
+  }
+
+  async rejectOvertime(actingUser: AuthenticatedUser, requestId: string): Promise<OvertimeRequest> {
+    const { request, actingEmployee } = await this.loadOvertimeRequestForDecision(actingUser, requestId);
+
+    return this.transactionRunner.run(async (manager) => {
+      const updated = await this.overtimeRequestRepository.update(
+        request.id,
+        { status: OvertimeRequestStatus.REJECTED, approvedBy: actingEmployee.id },
+        manager,
+      );
+
+      await this.auditLogService.record(
+        {
+          userId: actingUser.userId,
+          action: 'REJECT_OVERTIME_REQUEST',
+          entityType: 'overtime_request',
+          entityId: request.id,
+          oldValue: { status: OvertimeRequestStatus.PENDING },
+          newValue: { status: OvertimeRequestStatus.REJECTED, approvedBy: actingEmployee.id },
+        },
+        manager,
+      );
+
+      return updated;
+    });
+  }
+
+  private async loadOvertimeRequestForDecision(
+    actingUser: AuthenticatedUser,
+    requestId: string,
+  ): Promise<{ request: OvertimeRequest; targetEmployee: Employee; actingEmployee: Employee }> {
+    const request = await this.overtimeRequestRepository.findById(requestId);
+    if (!request) {
+      throw new NotFoundException('Pengajuan lembur tidak ditemukan');
+    }
+    if (request.status !== OvertimeRequestStatus.PENDING) {
+      throw new ConflictException('Pengajuan lembur sudah diproses');
+    }
+
+    const [targetEmployee, actingEmployee] = await Promise.all([
+      this.employeeRepository.findById(request.employeeId),
+      this.employeeRepository.findByUserId(actingUser.userId),
+    ]);
+    if (!targetEmployee) {
+      throw new NotFoundException('Data karyawan pengaju tidak ditemukan');
+    }
+    if (!actingEmployee) {
+      throw new NotFoundException('Data karyawan approver tidak ditemukan');
+    }
+
+    const isHrOrAbove = [UserRole.SUPER_ADMIN, UserRole.HR_ADMIN].includes(actingUser.role);
+    const isDirectManager = targetEmployee.managerId === actingEmployee.id;
+    if (!isHrOrAbove && !isDirectManager) {
+      throw new ForbiddenException('Anda bukan atasan langsung karyawan ini');
+    }
+
+    return { request, targetEmployee, actingEmployee };
   }
 
   // ---------------------------------------------------------------------

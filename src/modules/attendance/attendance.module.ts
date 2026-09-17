@@ -8,7 +8,12 @@ import { AttendanceController } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
 import { AttendanceRepository } from './attendance.repository';
 import { AttendanceCorrectionRepository } from './attendance-correction.repository';
-import { ATTENDANCE_CORRECTION_REPOSITORY, ATTENDANCE_REPOSITORY } from './attendance.constants';
+import { OvertimeRequestRepository } from './overtime-request.repository';
+import {
+  ATTENDANCE_CORRECTION_REPOSITORY,
+  ATTENDANCE_REPOSITORY,
+  OVERTIME_REQUEST_REPOSITORY,
+} from './attendance.constants';
 import { GeofenceValidationStrategy } from './strategies/geofence-validation.strategy';
 import { AuditLogService } from '../../common/services/audit-log.service';
 import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/transaction-runner';
@@ -28,11 +33,13 @@ import { TRANSACTION_RUNNER, TypeOrmTransactionRunner } from '../../database/tra
     AuditLogService,
     { provide: ATTENDANCE_REPOSITORY, useClass: AttendanceRepository },
     { provide: ATTENDANCE_CORRECTION_REPOSITORY, useClass: AttendanceCorrectionRepository },
+    { provide: OVERTIME_REQUEST_REPOSITORY, useClass: OvertimeRequestRepository },
     { provide: TRANSACTION_RUNNER, useClass: TypeOrmTransactionRunner },
   ],
-  // ATTENDANCE_REPOSITORY diekspor supaya modul lain (mis. payroll — jam
-  // lembur & potongan alpha, roadmap Phase 4) bisa membaca attendances
-  // tanpa mengakses tabelnya langsung (Repository Pattern, §3).
-  exports: [ATTENDANCE_REPOSITORY],
+  // ATTENDANCE_REPOSITORY & OVERTIME_REQUEST_REPOSITORY diekspor supaya
+  // modul lain (payroll — jam lembur & potongan alpha, roadmap Phase 4)
+  // bisa membaca attendances/overtime_requests tanpa mengakses tabelnya
+  // langsung (Repository Pattern, §3).
+  exports: [ATTENDANCE_REPOSITORY, OVERTIME_REQUEST_REPOSITORY],
 })
 export class AttendanceModule {}

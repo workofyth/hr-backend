@@ -28,11 +28,16 @@ untuk seluruh modul lain (Attendance, Leave, Payroll, Reports).
 | `POST /employees` | SUPER_ADMIN, HR_ADMIN |
 | `GET /employees`, `GET /employees/:id` | + MANAGER, FINANCE (baca saja) |
 | `PUT /employees/:id`, `DELETE /employees/:id` | SUPER_ADMIN, HR_ADMIN |
+| `GET /employees/me`, `PUT /employees/me` | Semua role terautentikasi (self-service) |
 
 ## Catatan
 
-- Belum ada endpoint self-service ("karyawan lihat/update data sendiri") —
-  di luar cakupan Phase 1 yang sudah dikerjakan.
-- Belum ada CRUD `employee_salary_structures` (struktur gaji per karyawan,
-  §5.5) — saat ini diisi lewat migration/SQL manual, dibaca read-only oleh
-  `PayrollModule`. Bila dibangun, sertakan audit log (checklist §7).
+- Self-service (`/employees/me`) hanya mengizinkan update field non-kritis
+  (`bankAccountNo`, `bankName`, lihat `UpdateMyProfileDto`) — identitas
+  (NIK/NPWP/employeeCode), struktur organisasi, dan kredensial login tetap
+  eksklusif lewat `PUT /employees/:id` (HR_ADMIN/SUPER_ADMIN) atau modul Auth.
+  Rute `me` didaftarkan sebelum `:id` di controller agar tidak ditangkap
+  `ParseUUIDPipe`.
+- CRUD `employee_salary_structures` (struktur gaji per karyawan, §5.5) kini
+  dikelola oleh `PayrollModule` (`PayrollService.assignSalaryStructure`),
+  bukan modul ini — lihat `payroll/README.md`.
